@@ -10,12 +10,7 @@
       server: -f infra/compose.yml -f infra/compose.prod.yml
       clients: -f infra/compose.clients.yml
     compose: "docker compose {{ compose_files[role] }}"
-    # override with -e @secrets.yml (ansible-vault encrypted) or export in shell
-    contract_id: "{{ lookup('env', 'CONTRACT_ID') | default('v3.brawler-platform-5c8e2b.testnet', true) }}"
-    monsters_id: "{{ lookup('env', 'MONSTERS_ID') | default('v2.brawler-monsters-5c8e2b.testnet', true) }}"
-    referee_id: "{{ lookup('env', 'REFEREE_ID') | default('referee.v2.brawler-platform-5c8e2b.testnet', true) }}"
-    referee_key: "{{ lookup('env', 'REFEREE_KEY') }}"
-    merchant_keys: "{{ lookup('env', 'MERCHANT_KEYS') }}"
+    # TODO(solana): chain env (program ids, referee key) once servers read it.
     deb_arch: "{{ 'arm64' if ansible_facts.architecture == 'aarch64' else 'amd64' }}"
 
   tasks:
@@ -65,14 +60,6 @@
         repo: "{{ repo_url }}"
         dest: "{{ app_dir }}"
         version: "{{ repo_version }}"
-
-    - name: Server env
-      ansible.builtin.template:
-        src: env.j2
-        dest: "{{ app_dir }}/infra/.env"
-        mode: "0600"
-      no_log: true
-      when: role == 'server'
 
     - name: Caddyfile
       ansible.builtin.template:

@@ -2,7 +2,7 @@ COMPOSE := docker compose -f infra/compose.yml
 
 TF := terraform -chdir=infra/terraform
 
-.PHONY: dev down logs test wasm e2e deploy-infra push-image push-agents push-client push-market ansible deploy
+.PHONY: dev down logs test deploy-infra push-image push-agents push-client push-market ansible deploy
 
 dev:
 	$(COMPOSE) up --build -d
@@ -19,16 +19,6 @@ logs:
 test:
 	npm test
 	cargo test --workspace
-	cd contracts/platform && cargo test
-	cd games/brawler/contract && cargo test
-	$(MAKE) e2e
-
-wasm:
-	cd contracts/platform && cargo near build non-reproducible-wasm
-	cd games/brawler/contract && cargo near build non-reproducible-wasm
-
-e2e: wasm
-	cd contracts/e2e && cargo test -- --nocapture
 
 deploy-infra:
 	$(TF) init
@@ -57,7 +47,7 @@ push-client:
 push-market:
 	$(call ship,market,clients,brawler-market,--build-arg NEXT_PUBLIC_BRAWLER_URL=https://$(CLIENTS_DOMAIN))
 
-# REFEREE_KEY etc. from env (see infra/README.md). extra flags: make deploy ANSIBLE_ARGS="..."
+# extra flags: make deploy ANSIBLE_ARGS="..."
 PLAY = ANSIBLE_CONFIG=infra/ansible/ansible.cfg ansible-playbook infra/ansible/playbook.yml $(ANSIBLE_ARGS)
 ansible:
 	$(PLAY) -i "$(call out,ips,server)," -e role=server -e domain="$(SERVER_DOMAIN)"

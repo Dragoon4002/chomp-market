@@ -7,7 +7,7 @@ Two boxes (terraform `instance_types`), AWS profile `near-games`, region `ap-sou
 
 Domains are `<eip with dashes>.sslip.io` (`terraform output domains`), so no DNS setup. `NEXT_PUBLIC_*` are baked at build time from those outputs (`make push-client` / `push-market`).
 
-Server chain env (ansible defaults, override via env/secrets): `CONTRACT_ID=v3.brawler-platform-5c8e2b.testnet`, `MONSTERS_ID=v2.brawler-monsters-5c8e2b.testnet`, `REFEREE_ID=referee.v2.brawler-platform-5c8e2b.testnet`, `REFEREE_KEY` (required for gasless attestations).
+Servers run free rooms only (no chain env) until the Solana + MagicBlock port.
 
 Ribbon/keyfall clients (`games/{ribbon,keyfall}/client`): `NEXT_PUBLIC_SERVER_URL=wss://{ribbon,keyfall}.<server domain>`, `NEXT_PUBLIC_MARKET_URL=<market url>`. Market: `NEXT_PUBLIC_RIBBON_URL=<ribbon url>`.
 
@@ -17,7 +17,6 @@ Needs ssh access as `ubuntu`, docker buildx, `jq`. Ansible checks out `main` fro
 
 ```sh
 make deploy-infra                 # terraform (AWS_PROFILE defaults to near-games)
-export REFEREE_KEY=$(jq -r .private_key ~/.near-credentials/testnet/referee.v2.brawler-platform-5c8e2b.testnet.json)
 make deploy                       # ansible base pass, build+ship all 4 images, ansible compose up
 # or piecewise:
 make push-image push-agents       # server box

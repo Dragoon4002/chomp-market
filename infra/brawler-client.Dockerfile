@@ -10,7 +10,6 @@ COPY games/brawler/client games/brawler/client
 # NEXT_PUBLIC_* are inlined at build time
 ARG NEXT_PUBLIC_SERVER_URL
 ARG NEXT_PUBLIC_MARKET_URL
-ARG NEXT_PUBLIC_FASTAUTH=off
 ENV NEXT_OUTPUT=standalone NEXT_TELEMETRY_DISABLED=1
 RUN npm run build -w @xyz/brawler
 
