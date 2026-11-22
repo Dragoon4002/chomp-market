@@ -25,3 +25,6 @@ out/
 # remotion moveset video renders
 /games/brawler/video/out/
 /reference/
+
+# local-only planning docs
+/docs/
