@@ -35,6 +35,10 @@ Copy `games/_template/` to `games/<slug>/` (slug = folder name, `[a-z0-9-]`), fi
 - `Chomp.result({ winner?, score?, tapeHash? })` at match end.
 - `Chomp.frames(f)` for each input batch (`settle: "frames"` only).
 - Where in the code each call goes:
+- Stakes: <!-- free-only (client result trusted) | verifiable: settle "frames" + deterministic replay by referee, or logic on ER -->
+
+## Map
+<!-- filled by port-game skill step 3: entry, loop, RNG calls, input, score/end, network/storage/3rd-party, time sources (file:line) -->
 
 ## Done checklist
 - [ ] License OK, `LICENSE` kept in `build/`
