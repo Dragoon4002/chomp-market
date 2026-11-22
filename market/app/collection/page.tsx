@@ -34,7 +34,7 @@ function PresaleCard({ p, s, onDone }: { p: Presale; s: Skill; onDone: () => voi
         {!cap && !p.end_ms && <span className="rounded-full border-2 border-ink bg-panel-2 px-2.5 py-0.5 text-muted">Permanent shop</span>}
       </div>
       <div className="mt-auto flex items-end justify-between gap-3">
-        <div><p className="text-xs font-extrabold uppercase text-muted">Price</p><p className="font-display text-3xl">{fmt(p.price)} Ⓝ</p></div>
+        <div><p className="text-xs font-extrabold uppercase text-muted">Price</p><p className="font-display text-3xl">{fmt(p.price)} SOL</p></div>
         <div className="text-right text-sm font-extrabold">
           {state === "soon" ? <><p className="text-muted">Starts in</p><p className="font-display text-2xl text-gold"><Countdown to={p.start_ms} /></p></>
             : state === "live" && p.end_ms ? <><p className="text-muted">Ends in</p><p className="font-display text-2xl text-ember"><Countdown to={p.end_ms} /></p></>
@@ -51,7 +51,7 @@ function PresaleCard({ p, s, onDone }: { p: Presale; s: Skill; onDone: () => voi
         <div className="flex gap-2">
           <input type="number" min={1} max={max} value={q} onChange={(e) => setQ(Math.max(1, Math.min(max, Number(e.target.value) || 1)))} aria-label="Quantity" className={cx(inputCls, "w-20 text-center")} />
           <Btn className="flex-1" disabled={!a.account || soldOut || left <= 0 || me?.ok === false} onClick={() => act(() => a.buyPresale(p, q), `Minted ${q} ${s.name}.`, onDone)}>
-            {soldOut ? "Sold out" : left <= 0 ? "Wallet limit hit" : me?.ok === false ? "Not on allowlist" : `Mint · ${fmt(BigInt(p.price) * BigInt(q))} Ⓝ`}
+            {soldOut ? "Sold out" : left <= 0 ? "Wallet limit hit" : me?.ok === false ? "Not on allowlist" : `Mint · ${fmt(BigInt(p.price) * BigInt(q))} SOL`}
           </Btn>
         </div>
       )}

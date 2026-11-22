@@ -6,7 +6,7 @@ import { applySkills, sanitize, sanitizeSkills, statsOf, type Dna, type Skill } 
 import { STAGE_IDS, type StageId } from './stages.ts';
 import { music, playEvents } from './audio.ts';
 import { bot } from './bot.ts';
-import type { Attestation, SignMatch } from './near.ts';
+import type { Attestation, SignMatch } from './chain.ts';
 import { unpack } from './tape.ts';
 
 export interface Player { name: string; dna: Dna; account?: string; skills?: Skill[] }

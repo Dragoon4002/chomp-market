@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { sanitize, sanitizeSkills } from '@/lib/genes.ts';
-import { CONTRACT_ID, useArena, type MatchView } from '@/lib/near.ts';
+import { useArena, type MatchView } from '@/lib/chain.ts';
 import { SERVER, startReplay } from '@/lib/session.ts';
 import { simulate, tapeHash, type Tape } from '@/lib/tape.ts';
 import { Ico } from '@/components/ui.tsx';
@@ -83,7 +83,7 @@ export function Replay({ tapeKey }: { tapeKey: string }) {
               {tape.match_id == null ? <Row ok={null} label="On-chain">Friendly match, nothing on-chain.</Row> : (
                 <Row ok={chainHash ? chainHash === check.hash : null} label={`Tape hash vs on-chain match #${tape.match_id}`}>
                   {check.chain === null ? 'Could not load the match.' : !chainHash ? 'No tape hash on-chain for this match.' : chainHash === check.hash ? 'matches the hash the referee posted' : <>on-chain <code>{chainHash.slice(0, 16)}…</code> differs</>}
-                  {' '}<a href={`https://testnet.nearblocks.io/address/${CONTRACT_ID}`} target="_blank" rel="noreferrer">Explorer</a>
+                  {/* TODO(solana): explorer link for the match account */}
                 </Row>
               )}
               <li className="note">{tape.frames.length} frames · {tape.stage} · hash = sha256(stage ‖ 0x00 ‖ frames u32 LE)</li>

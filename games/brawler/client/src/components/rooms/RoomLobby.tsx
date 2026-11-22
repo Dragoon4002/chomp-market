@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { archetype, type Dna, type Monster } from '@/lib/genes.ts';
 import { STAGES, STAGE_IDS, type StageId } from '@/lib/stages.ts';
-import { fmt } from '@/lib/near.ts';
+import { fmt, UNIT } from '@/lib/chain.ts';
 import type { ChatLine, RoomState } from '@/lib/session.ts';
 import { ArenaBackdrop, asset, BotTag, HubDialog, Ico, Portrait, STAGE_ICON, StageThumb, TYPE_ICON } from '@/components/ui.tsx';
 import { Chat } from './Chat.tsx';
@@ -71,7 +71,7 @@ export function RoomLobby(p: RoomLobbyProps) {
         <section className="room-main slab" aria-label="Fighters">
           <div className="row room-chips">
             <span className="chip row-ico"><Ico n={rs.pub ? 'icon-room-public' : 'icon-room-private'} />{rs.pub ? 'Public' : 'Private'}</span>
-            {rs.stake !== '0' ? <span className="chip gold row-ico"><Ico n="coin" />Stake {fmt(rs.stake)} NEAR each</span> : <span className="chip row-ico">Friendly · no stake</span>}
+            {rs.stake !== '0' ? <span className="chip gold row-ico"><Ico n="coin" />Stake {fmt(rs.stake)} {UNIT} each</span> : <span className="chip row-ico">Friendly · no stake</span>}
             {rs.bettable && <span className="chip gold row-ico"><Ico n="icon-bet" />Open for bets</span>}
             {rs.spectators > 0 && <span className="chip row-ico"><Ico n="icon-watch" />{rs.spectators} watching</span>}
           </div>

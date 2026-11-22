@@ -1,6 +1,6 @@
 import type { Skill, SkillKind } from '@/lib/genes.ts';
 
-export const DEMO_NOTE = 'Demo collection stored in this browser. Monsters move on-chain to NEAR in the next build.';
+export const DEMO_NOTE = 'Demo collection stored in this browser. Monsters move on-chain in a later build.';
 
 export const GENE_NAMES: Record<string, string[]> = {
   horn: ['Curved horns', 'Spike horns', 'Ram curls', 'Crest horn'],

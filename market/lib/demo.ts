@@ -1,8 +1,7 @@
-import { nearToYocto } from "near-api-js";
 import type { Api, Collection, Kind, Monster, Point, Presale, Rarity, Skill, SkillListing } from "./assets";
 
 const ME = "demo.testnet";
-const N = (n: number) => nearToYocto(n.toFixed(4) as `${number}`).toString();
+const N = (n: number) => (BigInt(Math.round(n * 1e4)) * 10n ** 20n).toString();
 const H = 3_600_000, NOW = Date.now();
 let seed = 7;
 const rnd = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;

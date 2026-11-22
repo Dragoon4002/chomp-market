@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { NearProvider, NETWORK } from '@xyz/platform';
+import { WalletProvider, NETWORK } from '@xyz/platform';
 import type { OnlineReq } from '@/lib/match.ts';
 import { Title } from '@/components/Title.tsx';
 import { LocalGame, OnlineGame } from '@/components/Game.tsx';
@@ -30,7 +30,7 @@ function Root() {
 }
 
 export const App = () => (
-  <NearProvider config={{ network: NETWORK }}>
+  <WalletProvider config={{ network: NETWORK }}>
     <Root />
-  </NearProvider>
+  </WalletProvider>
 );

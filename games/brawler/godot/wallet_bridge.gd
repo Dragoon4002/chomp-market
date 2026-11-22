@@ -1,12 +1,12 @@
-# NEAR bridge for the Godot web export hosted at /godot (Godot 4).
-# Add as an Autoload named "Near" (Project Settings > Autoload). Web builds only; the wallet lives in the
-# parent React page (games/brawler/client/src/app/godot/page.tsx), which signs and sends after the user confirms.
+# Wallet bridge for the Godot web export hosted at /godot (Godot 4). Host page handler removed with the old chain.
+# TODO(solana): parent page answers wallet:* messages via @xyz/platform.
+# Add as an Autoload named "Wallet" (Project Settings > Autoload). Web builds only.
 #
-#   var r = await Near.connect_wallet()          # {ok, data: "alice.testnet" | null}
-#   var r = await Near.sign("hello from godot")  # {ok, data: {account, message, recipient, nonce, publicKey, signature}}
-#   var r = await Near.create_match()            # {ok, data: {matchId}}  free, non-bettable test room
-#   var r = await Near.cancel_match(id)          # {ok, data: {matchId, cancelled}}
-#   Near.account_changed.connect(func(acct): ...)
+#   var r = await Wallet.connect_wallet()          # {ok, data: "<account>" | null}
+#   var r = await Wallet.sign("hello from godot")  # {ok, data: {account, message, recipient, nonce, publicKey, signature}}
+#   var r = await Wallet.create_match()            # {ok, data: {matchId}}  free, non-bettable test room
+#   var r = await Wallet.cancel_match(id)          # {ok, data: {matchId, cancelled}}
+#   Wallet.account_changed.connect(func(acct): ...)
 extends Node
 
 signal account_changed(account)  # String, or null when signed out
@@ -18,7 +18,7 @@ var _next := 0
 
 func _ready() -> void:
 	if not OS.has_feature("web"):
-		push_warning("Near bridge: web export only")
+		push_warning("Wallet bridge: web export only")
 		return
 	_cb = JavaScriptBridge.create_callback(_on_message)
 	JavaScriptBridge.get_interface("window").addEventListener("message", _cb)
@@ -28,11 +28,11 @@ func _ready() -> void:
 		account = r.data
 		account_changed.emit(account)
 
-func connect_wallet() -> Dictionary: return await _request("near:connect")
-func get_account() -> Dictionary: return await _request("near:account")
-func sign(message: String) -> Dictionary: return await _request("near:sign", {"message": message})
-func create_match() -> Dictionary: return await _request("near:createMatch")
-func cancel_match(match_id: int) -> Dictionary: return await _request("near:cancelMatch", {"matchId": match_id})
+func connect_wallet() -> Dictionary: return await _request("wallet:connect")
+func get_account() -> Dictionary: return await _request("wallet:account")
+func sign(message: String) -> Dictionary: return await _request("wallet:sign", {"message": message})
+func create_match() -> Dictionary: return await _request("wallet:createMatch")
+func cancel_match(match_id: int) -> Dictionary: return await _request("wallet:cancelMatch", {"matchId": match_id})
 
 func _request(type: String, args: Dictionary = {}) -> Dictionary:
 	if not OS.has_feature("web"):
@@ -59,8 +59,8 @@ func _on_message(args) -> void:
 	if typeof(m) != TYPE_DICTIONARY:
 		return
 	match m.get("type", ""):
-		"near:account":
+		"wallet:account":
 			account = m.get("account")
 			account_changed.emit(account)
-		"near:result":
+		"wallet:result":
 			_result.emit(str(m.get("id", "")), {"ok": m.get("ok", false), "data": m.get("data"), "error": m.get("error", "")})

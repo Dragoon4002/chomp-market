@@ -1,19 +1,20 @@
 import { randomDna, nameFor, type Skill } from './genes.ts';
-import type { Attestation, Book, FillView, Limits, MatchView, OrderView, PositionView, TournamentView } from './near.ts';
+import { UNIT } from '@xyz/platform';
+import type { Attestation, Book, FillView, Limits, MatchView, OrderView, PositionView, TournamentView } from './chain.ts';
 import type { HistoryEntry, MonstersApi, NftMonster, SkillType } from './nft.ts';
 import { breedPair, monsters as storeMonsters } from './store.ts';
 import { Market } from './market.ts';
 
 export const DEMO = new URLSearchParams(location.search).has('demo');
 export const DEMO_ACCOUNT = 'demo-player.testnet';
-export const DEMO_BALANCE = (25n * 10n ** 24n).toString(); // 25 NEAR
-const NEAR = (n: number) => (BigInt(Math.round(n * 1000)) * 10n ** 21n).toString();
+export const DEMO_BALANCE = (25n * 10n ** 24n).toString(); // 25 coins
+const AMT = (n: number) => (BigInt(Math.round(n * 1000)) * 10n ** 21n).toString();
 const mon = (seed: number) => ({ name: nameFor(seed), dna: randomDna(seed), account: `${nameFor(seed).toLowerCase()}.testnet` });
 
 export const DEMO_ROOMS = [
-  { code: 'LIVE', pub: true, status: 'live', stage: 'ember', bettable: true, matchId: 1, stake: NEAR(0.5), winner: null, watchers: 14, players: [mon(11), mon(12)] },
-  { code: 'GROV', pub: false, status: 'live', stage: 'grove', bettable: true, matchId: 2, stake: NEAR(2), winner: null, watchers: 3, players: [mon(21), mon(22)] },
-  { code: 'OPEN', pub: true, status: 'waiting', stage: 'docks', bettable: true, matchId: 3, stake: NEAR(0.1), winner: null, watchers: 0, players: [mon(31)] },
+  { code: 'LIVE', pub: true, status: 'live', stage: 'ember', bettable: true, matchId: 1, stake: AMT(0.5), winner: null, watchers: 14, players: [mon(11), mon(12)] },
+  { code: 'GROV', pub: false, status: 'live', stage: 'grove', bettable: true, matchId: 2, stake: AMT(2), winner: null, watchers: 3, players: [mon(21), mon(22)] },
+  { code: 'OPEN', pub: true, status: 'waiting', stage: 'docks', bettable: true, matchId: 3, stake: AMT(0.1), winner: null, watchers: 0, players: [mon(31)] },
   { code: 'FREE', pub: true, status: 'waiting', stage: 'ember', bettable: false, matchId: null, stake: '0', winner: null, watchers: 1, players: [mon(41)] },
 ] as const;
 
@@ -23,7 +24,7 @@ export const demoChat = (a: string, b: string) => [
 ].map(([from, seat, text], i, l) => ({ from: from as string, seat: seat as number, text: text as string, ts: Date.now() - (l.length - i) * 25_000 }));
 
 const match = (id: number, status: MatchView['status'], price = 5000, kos = 1): MatchView => ({
-  id, game: 'brawler', host: DEMO_ROOMS[0].players[0].account, guest: DEMO_ROOMS[0].players[1].account, stake: NEAR(0.5), bettable: true,
+  id, game: 'brawler', host: DEMO_ROOMS[0].players[0].account, guest: DEMO_ROOMS[0].players[1].account, stake: AMT(0.5), bettable: true,
   status, winner: status === 'settled' ? 0 : null, kos, price_bps: price, collateral: '0', fills: 0,
   created_ms: Date.now() - 600_000, started_ms: Date.now() - 300_000, monsters: [null, null], tournament: null,
 });
@@ -58,7 +59,7 @@ const posView = (): PositionView | null => {
 /** Demo fight ended: settle the market (null = void). */
 export const demoSettle = (id: number | null, winner: number | null) => { if (id === 1 && LIVE.status === 'live') LIVE.finish(winner); };
 const POS: Record<number, PositionView> = {
-  4: { shares: [300, 0], paid: [NEAR(2), '0'], open: '0', claimed: false },
+  4: { shares: [300, 0], paid: [AMT(2), '0'], open: '0', claimed: false },
 };
 const tx = <T,>(f: () => T) => wait(null).then(f); // wallet round trip, then the call
 
@@ -84,8 +85,8 @@ if (DEMO) {
     skillIds: i === 0 ? [5, 7] : [], skills: loadout(i === 0 ? [5, 7] : []),
   }));
   NFTS.push(
-    ...OTHERS.slice(0, 4).map((m, i) => ({ ...m, price: NEAR([0.5, 1, 2.5, 4][i]) })), // for sale
-    ...OTHERS.slice(4, 7).map((m, i) => ({ ...m, rentOffer: { pricePerDay: NEAR([0.05, 0.1, 0.2][i]), maxDays: [3, 7, 14][i] } })), // for rent
+    ...OTHERS.slice(0, 4).map((m, i) => ({ ...m, price: AMT([0.5, 1, 2.5, 4][i]) })), // for sale
+    ...OTHERS.slice(4, 7).map((m, i) => ({ ...m, rentOffer: { pricePerDay: AMT([0.05, 0.1, 0.2][i]), maxDays: [3, 7, 14][i] } })), // for rent
     ...OTHERS.slice(7),
   );
 }
@@ -118,14 +119,14 @@ export const demoMonsters: MonstersApi = {
   },
   list: (id, y) => mutate('monster listed for sale', () => patch(id, { price: y })),
   delist: (id) => mutate('listing removed', () => patch(id, { price: undefined })),
-  buy: (id, y) => mutate(`monster bought for ${fmtN(y)} NEAR`, () => patch(id, { owner: DEMO_ACCOUNT, price: undefined, rentOffer: undefined })),
+  buy: (id, y) => mutate(`monster bought for ${fmtN(y)} ${UNIT}`, () => patch(id, { owner: DEMO_ACCOUNT, price: undefined, rentOffer: undefined })),
   offerRent: (id, p, d) => mutate('rent offer published', () => patch(id, { rentOffer: { pricePerDay: p, maxDays: d } })),
   cancelRent: (id) => mutate('rent offer cancelled', () => patch(id, { rentOffer: undefined })),
   rent: (id, days) => mutate(`monster rented for ${days} day(s)`, () => patch(id, { rental: { renter: DEMO_ACCOUNT, untilMs: Date.now() + days * DAY } })),
   listings: () => wait(NFTS.filter((m) => m.price).map((m) => ({ ...m }))),
   rentOffers: () => wait(NFTS.filter((m) => m.rentOffer).map((m) => ({ ...m }))),
   owed: () => wait('0'),
-  withdrawOwed: () => sent('owed NEAR sent to your wallet'),
+  withdrawOwed: () => sent(`owed ${UNIT} sent to your wallet`),
   skillTypes: () => wait(SKILL_TYPES),
   skills: () => wait(SKILL_TYPES.filter((t) => FREE[t.id]).map((t) => ({ ...t, free: FREE[t.id], listed: 0 }))),
   equip: (id, ids) => mutate('skills equipped', () => {
@@ -134,7 +135,7 @@ export const demoMonsters: MonstersApi = {
     ids.forEach((s) => { FREE[s]--; });
     patch(id, { skillIds: [...ids], skills: loadout(ids) });
   }),
-  config: () => wait({ owner: 'admin.testnet', arena: 'arena.testnet', treasury: NEAR(3), breed_fee: NEAR(0.1), market_fee_bps: 250, royalty_bps: 500, rent_fee_bps: 250 }),
+  config: () => wait({ owner: 'admin.testnet', arena: 'arena.testnet', treasury: AMT(3), breed_fee: AMT(0.1), market_fee_bps: 250, royalty_bps: 500, rent_fee_bps: 250 }),
 };
 const fmtN = (y: string) => Number(BigInt(y) / 10n ** 21n) / 1000;
 
@@ -144,10 +145,10 @@ const mm = (id: number, host: string, guest: string, mh: string, mg: string, sta
 const ent = (n: number) => ({ account: OTHERS[n].owner, monster: OTHERS[n].id });
 const me = (): { account: string; monster: string } => ({ account: DEMO_ACCOUNT, monster: mineNow()[0]?.id ?? OTHERS[0].id });
 const TOURNAMENTS: TournamentView[] = [
-  { id: 1, game: 'brawler', size: 4, entry_fee: NEAR(0.2), pot: NEAR(0.4), bettable: true, status: 'open', entrants: [ent(0), ent(1)], rounds: [[null, null], [null]], champion: null, created_ms: Date.now() - 3 * HOUR },
-  { id: 2, game: 'brawler', size: 8, entry_fee: NEAR(0.5), pot: NEAR(4), bettable: true, status: 'live', entrants: [me(), ent(1), ent(2), ent(3), ent(4), ent(5), ent(6), ent(7)],
+  { id: 1, game: 'brawler', size: 4, entry_fee: AMT(0.2), pot: AMT(0.4), bettable: true, status: 'open', entrants: [ent(0), ent(1)], rounds: [[null, null], [null]], champion: null, created_ms: Date.now() - 3 * HOUR },
+  { id: 2, game: 'brawler', size: 8, entry_fee: AMT(0.5), pot: AMT(4), bettable: true, status: 'live', entrants: [me(), ent(1), ent(2), ent(3), ent(4), ent(5), ent(6), ent(7)],
     rounds: [[101, 102, 103, 104], [null, 105], [null]], champion: null, created_ms: Date.now() - 6 * HOUR },
-  { id: 3, game: 'brawler', size: 4, entry_fee: NEAR(0.1), pot: NEAR(0.4), bettable: false, status: 'done', entrants: [ent(8), ent(9), ent(10), ent(11)],
+  { id: 3, game: 'brawler', size: 4, entry_fee: AMT(0.1), pot: AMT(0.4), bettable: false, status: 'done', entrants: [ent(8), ent(9), ent(10), ent(11)],
     rounds: [[201, 202], [203]], champion: OTHERS[8].owner, created_ms: Date.now() - 2 * DAY },
 ];
 {
@@ -195,8 +196,8 @@ export const demoArena = {
   getMatch: (id: number) => wait(id === 1 ? liveView() : MATCHES.find((m) => m.id === id) ?? match(id, 'live')),
   getPosition: (id: number): Promise<PositionView | null> => wait(id === 1 ? posView() : POS[id] ?? null),
   getPrices: (id: number): Promise<[number, number][]> => wait(id === 1 ? LIVE.history.map(([t, b]) => [t, b]) : []),
-  config: (): Promise<Limits> => wait({ owner: DEMO_ACCOUNT, fee_bps: 10, max_bet: NEAR(100), unit: NEAR(0.01), treasury: '0' }),
-  claimable: (id: number) => wait(id === 1 ? LIVE.due(DEMO_ACCOUNT).toString() : id === 4 ? NEAR(3) : id === 5 ? NEAR(0.3) : '0'),
+  config: (): Promise<Limits> => wait({ owner: DEMO_ACCOUNT, fee_bps: 10, max_bet: AMT(100), unit: AMT(0.01), treasury: '0' }),
+  claimable: (id: number) => wait(id === 1 ? LIVE.due(DEMO_ACCOUNT).toString() : id === 4 ? AMT(3) : id === 5 ? AMT(0.3) : '0'),
   listMatches: () => wait(MATCHES.map((m) => (m.id === 1 ? liveView() : m))),
 };
 

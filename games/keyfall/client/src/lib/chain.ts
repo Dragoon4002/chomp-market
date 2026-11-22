@@ -1,4 +1,5 @@
 import { PLATFORM_ID, useBalance, usePlatform } from '@xyz/platform';
+// TODO(solana): chain seam for keyfall; calls go through @xyz/platform stubs (throw "coming soon").
 
 export const DEMO = typeof location !== 'undefined' && new URLSearchParams(location.search).has('demo');
 const GAME = 'keyfall';
@@ -21,9 +22,9 @@ export function useKeyfall() {
     createMatch: async (stakeYocto: string) =>
       Number(await p.call('create_match', { game: GAME, stake: stakeYocto, bettable: false, monster_id: null }, ONE_YOCTO)),
     joinMatch: (id: number): Promise<unknown> => p.call('join_match', { match_id: id, monster_id: null }, ONE_YOCTO),
-    // NEP-413 seat proof; nonce = server hello nonce (base64)
+    // seat proof (TODO(solana): wallet signMessage); nonce = server hello nonce (base64)
     sign: async (matchId: number, nonce: string): Promise<MatchAuth> => {
-      const s = await p.w.signNEP413Message({ message: `${GAME}:${matchId}`, recipient: PLATFORM_ID, nonce: Uint8Array.from(atob(nonce), (c) => c.charCodeAt(0)) });
+      const s = await p.w.signMessage({ message: `${GAME}:${matchId}`, recipient: PLATFORM_ID, nonce: Uint8Array.from(atob(nonce), (c) => c.charCodeAt(0)) });
       return { publicKey: String(s.publicKey), signature: String(s.signature) };
     },
   };

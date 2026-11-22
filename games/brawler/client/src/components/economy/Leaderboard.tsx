@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { fmt, useArena, type MatchView } from '@/lib/near.ts';
+import { fmt, UNIT, useArena, type MatchView } from '@/lib/chain.ts';
 import { rank } from '@/lib/leaderboard.ts';
 import { short } from '@/lib/format.ts';
 import { useLoad } from '@/hooks/async.ts';
 import { Ico } from '@/components/ui.tsx';
 
-const SORTS = [['wins', 'Most wins'], ['won', 'Most NEAR won']] as const;
+const SORTS = [['wins', 'Most wins'], ['won', `Most ${UNIT} won`]] as const;
 
 export function Leaderboard() {
   const arena = useArena();
@@ -36,7 +36,7 @@ export function Leaderboard() {
                 <b className={`rank r${i + 1}`}>{i + 1}</b>
                 <a className="lb-who" href={`/player/${encodeURIComponent(r.account)}`}><b title={r.account}>{short(r.account)}</b><small>{r.played} fights · {r.played - r.wins} losses</small></a>
                 <span className={`chip row-ico${by === 'wins' ? ' on' : ''}`}><Ico n="trophy" />{r.wins} wins</span>
-                <span className={`chip row-ico${by === 'won' ? ' on' : ''}`}><Ico n="coin" />{fmt(r.won.toString())} NEAR</span>
+                <span className={`chip row-ico${by === 'won' ? ' on' : ''}`}><Ico n="coin" />{fmt(r.won.toString())} {UNIT}</span>
               </li>
             ))}
           </ol>

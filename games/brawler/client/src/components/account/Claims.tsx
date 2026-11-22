@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fmt, useArena, type MatchView } from '@/lib/near.ts';
+import { fmt, UNIT, useArena, type MatchView } from '@/lib/chain.ts';
 import { errText } from '@/lib/format.ts';
 import { Ico } from '@/components/ui.tsx';
 
@@ -33,7 +33,7 @@ export function Claims() {
         <ul style={{ listStyle: 'none', padding: 0, margin: '12px 0 0', display: 'grid', gap: 8 }}>
           {rows.map(({ m, amt, act }) => (
             <li key={m.id} className="row" style={{ justifyContent: 'space-between' }}>
-              <span>Match #{m.id}: {act === 'expire' ? 'no result after 2 h, release for refund' : act === 'cancel' ? `unjoined room, ${fmt(amt)} NEAR stake` : `${fmt(amt)} NEAR${m.status === 'refund' ? ' refund' : ''}`}</span>
+              <span>Match #{m.id}: {act === 'expire' ? 'no result after 2 h, release for refund' : act === 'cancel' ? `unjoined room, ${fmt(amt)} ${UNIT} stake` : `${fmt(amt)} ${UNIT}${m.status === 'refund' ? ' refund' : ''}`}</span>
               <button className="btn" onClick={async () => {
                 try { await (act === 'cancel' ? arena.cancelMatch(m.id) : act === 'expire' ? arena.expire(m.id) : arena.claim(m.id)); load(); }
                 catch (e) { setMsg(errText(e)); }

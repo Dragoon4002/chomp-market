@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { art, change24, fmt, GAMES, near, skillKey, useAssets, type Point } from "@/lib/assets";
+import { art, change24, fmt, GAMES, amount, skillKey, useAssets, type Point } from "@/lib/assets";
 import { Card as UiCard, CardContent, CardDescription, CardTitle } from "@/components/shadcn/card";
 import { Badge } from "@/components/shadcn/badge";
 import { Button } from "@/components/shadcn/button";
@@ -90,12 +90,12 @@ export default function Home() {
       <div className="grid gap-5 md:grid-cols-3">
         {!d ? [0, 1, 2].map((i) => <Loading key={i} />) : <>
           {top ? <Card label="Top Skill (24H)" href={`/item?id=skill:${top.id}`} chart={prices(d.hist[top.id])}
-            icon={<SkillArt kind={top.kind} rarity={top.rarity} mag={top.mag} size={44} />} name={top.name} value={`${fmt(top.last_price)} Ⓝ`} delta={<Pct v={change24(d.hist[top.id])} />} /> : <Blank label="Top Skill (24H)">No skill sales yet.</Blank>}
+            icon={<SkillArt kind={top.kind} rarity={top.rarity} mag={top.mag} size={44} />} name={top.name} value={`${fmt(top.last_price)} SOL`} delta={<Pct v={change24(d.hist[top.id])} />} /> : <Blank label="Top Skill (24H)">No skill sales yet.</Blank>}
           {hot ? <Card label="Hottest Monster" href={`/item?id=monster:${hot.token_id}`} chart={prices(d.mh)}
-            icon={<MonsterArt dna={hot.dna} size={44} />} name={hot.name} value={`${fmt(hot.price)} Ⓝ · ${hot.record.w}W`} delta={<Pct v={change24(d.mh)} />} /> : <Blank label="Hottest Monster">No monsters listed.</Blank>}
+            icon={<MonsterArt dna={hot.dna} size={44} />} name={hot.name} value={`${fmt(hot.price)} SOL · ${hot.record.w}W`} delta={<Pct v={change24(d.mh)} />} /> : <Blank label="Hottest Monster">No monsters listed.</Blank>}
           {live && liveSkill ? <Card label="Live Presale" href={`/collection?id=${liveSkill.collection}`} chart={soldCurve.length > 1 ? soldCurve : [0, Number(live.sold)]}
             icon={<SkillArt kind={liveSkill.kind} rarity={liveSkill.rarity} mag={liveSkill.mag} size={44} />} name={liveSkill.name}
-            value={live.cap_total ? `${live.sold}/${live.cap_total} sold · ${fmt(live.price)} Ⓝ` : `${live.sold} sold · ${fmt(live.price)} Ⓝ`}
+            value={live.cap_total ? `${live.sold}/${live.cap_total} sold · ${fmt(live.price)} SOL` : `${live.sold} sold · ${fmt(live.price)} SOL`}
             delta={live.cap_total ? <span className="font-extrabold text-up">{Math.round((Number(live.sold) / Number(live.cap_total)) * 100)}%</span> : <span className="font-extrabold text-up">Open</span>} /> : <Blank label="Live Presale">No live presale.</Blank>}
         </>}
       </div>
@@ -121,7 +121,7 @@ export default function Home() {
                 <span className="block truncate font-display text-lg leading-tight">{m.name} <span className="text-muted">#{m.token_id}</span></span>
                 <span className="text-xs font-extrabold text-muted">Gen {m.gen} · {m.record.w}W {m.record.l}L</span>
               </span>
-              <span className="font-extrabold tabular-nums">{near(m.price).toFixed(2)} Ⓝ</span>
+              <span className="font-extrabold tabular-nums">{amount(m.price).toFixed(2)} SOL</span>
             </Link>
           ))}
         </Panel>

@@ -1,11 +1,10 @@
-import { useNearWallet } from '@xyz/platform';
+import { toYocto, useWallet } from '@xyz/platform';
 import { sanitize, sanitizeSkills, SKILL_KINDS, type Monster, type Skill, type SkillKind } from './genes.ts';
 import { DEMO, demoMonsters } from './demo.ts';
 
-export const MONSTERS_ID: string = process.env.NEXT_PUBLIC_MONSTERS_ID ?? 'v2.brawler-monsters-5c8e2b.testnet';
+export const MONSTERS_ID: string = process.env.NEXT_PUBLIC_MONSTERS_ID ?? '';
 export const MARKET_URL: string = process.env.NEXT_PUBLIC_MARKET_URL ?? 'http://localhost:3100';
-const GAS = '30000000000000', GAS_X = '100000000000000';
-const NEAR = (n: number) => (BigInt(Math.round(n * 1000)) * 10n ** 21n).toString();
+const GAS = '0', GAS_X = '0';
 
 // Contract JSON (see tasks/economy-spec.md)
 export interface MonsterView {
@@ -73,8 +72,9 @@ export interface MonstersApi {
   equip(id: string, skillIds: number[]): Promise<unknown>; // replaces the whole loadout
 }
 
+// TODO(solana): monster NFTs + skill tokens (Metaplex/program); every call hits the platform stub until then.
 export function useMonsters(): MonstersApi {
-  const w = useNearWallet();
+  const w = useWallet();
   if (DEMO) return demoMonsters;
   const call = (method: string, args: Record<string, unknown>, deposit = '0', gas = GAS) =>
     w.callFunction({ contractId: MONSTERS_ID, method, args, gas, deposit });
@@ -99,10 +99,10 @@ export function useMonsters(): MonstersApi {
     },
     get: async (id) => { const v = await view<MonsterView | null>('get_monster', { token_id: id }); return v ? toMonster(v) : null; },
     history: (id) => view<HistoryEntry[]>('get_history', { token_id: id }),
-    hatchStarters: () => call('hatch_starters', {}, NEAR(0.1), GAS_X),
+    hatchStarters: () => call('hatch_starters', {}, toYocto(0.1), GAS_X),
     startersClaimed: () => view<boolean>('starters_claimed', { account_id: w.signedAccountId }),
     breed: async (a, b) => {
-      const fee = BigInt((await config()).breed_fee) + BigInt(NEAR(0.05)); // fee + storage; contract refunds excess
+      const fee = BigInt((await config()).breed_fee) + BigInt(toYocto(0.05)); // fee + storage; contract refunds excess
       const v = await call('breed', { a, b }, fee.toString(), GAS_X) as MonsterView | null;
       return v ? toMonster(v) : null;
     },

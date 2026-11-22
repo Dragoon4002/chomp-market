@@ -9,7 +9,7 @@ config/features=PackedStringArray("4.7", "GL Compatibility")
 
 [autoload]
 
-Near="*res://near_bridge.gd"
+Wallet="*res://wallet_bridge.gd"
 
 [display]
 

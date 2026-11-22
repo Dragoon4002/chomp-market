@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { MARKET_URL, NETWORK, NearProvider, fmt, toYocto, useBalance, usePlatform } from '@xyz/platform';
+import { MARKET_URL, NETWORK, WalletProvider, fmt, toYocto, useBalance, usePlatform } from '@xyz/platform';
 import { BOT_MS, FEE_BPS, useApi, type Api, type Line, type Room, type Side } from '@/lib/api.ts';
 import { commitOf, flip, unhex } from '@/lib/flip.ts';
 
@@ -8,10 +8,10 @@ const short = (h: string) => (h ? `${h.slice(0, 6)}…${h.slice(-4)}` : '—');
 // account display (brawler lib/format.ts): implicit 64-hex -> abc...xyz, long -> 20 + …
 const shortAcct = (a: string) => (/^[0-9a-f]{64}$/.test(a) ? `${a.slice(0, 3)}...${a.slice(-3)}` : a.length > 22 ? `${a.slice(0, 20)}…` : a);
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e)) || 'failed';
-const yocto = (near: string) => { try { return toYocto(near.trim() || '0'); } catch { return null; } };
+const yocto = (amt: string) => { try { return toYocto(amt.trim() || '0'); } catch { return null; } };
 const payout = (stake: string) => (2n * BigInt(stake) * BigInt(10_000 - FEE_BPS)) / 10_000n;
-// exact yocto -> NEAR string (fmt rounds; MAX must never exceed balance)
-const near = (y: bigint) => { const s = y.toString().padStart(25, '0'); return `${s.slice(0, -24)}.${s.slice(-24)}`.replace(/\.?0+$/, '') || '0'; };
+// exact yocto -> SOL string (fmt rounds; MAX must never exceed balance)
+const whole = (y: bigint) => { const s = y.toString().padStart(25, '0'); return `${s.slice(0, -24)}.${s.slice(-24)}`.replace(/\.?0+$/, '') || '0'; };
 const amt = (stake: string) => (stake === '0' ? 'FREE' : fmt(stake));
 
 function useImg(src: string) {
@@ -43,7 +43,7 @@ function Toss({ from, to, size, onDone }: { from: Side; to?: Side; size: number;
   return <>{vid(from, from, false)}{to != null && vid(from, to, true)}</>;
 }
 
-const N = () => <span className="n" aria-hidden>N</span>; // NEAR glyph
+const N = () => <span className="n" aria-hidden>N</span>; // currency glyph
 
 // deterministic gradient + initials from account name; empty slot when no one seated
 function Avatar({ name, side, bot, big }: { name?: string; side: Side; bot?: boolean; big?: boolean }) {
@@ -76,7 +76,7 @@ function Top({ api }: { api: Api }) {
         <a className="wchip" href={MARKET_URL} target="_blank" rel="noreferrer" title="Deposit / withdraw">
           <Coin face={0} size={26} />
           {api.me && <span className="acct">{shortAcct(api.me)}</span>}
-          <span className="bal">{api.demo ? '25' : fmt(balance)} <small>NEAR</small></span>
+          <span className="bal">{api.demo ? '25' : fmt(balance)} <small>SOL</small></span>
         </a>
         {!p.w.signedAccountId
           ? <button className="btn connect" onClick={() => p.w.signIn()}>Connect</button>
@@ -112,13 +112,13 @@ function Lobby({ api, go }: { api: Api; go: (id: number) => void }) {
   });
   const join = (id: number) => run(`join ${id}`, async () => { await api.joinRoom(id); go(id); });
   const bal = BigInt(api.demo ? toYocto('25') : balance ?? '0');
-  const scale = (f: (y: bigint) => bigint) => setStake(near(f(BigInt(yocto(stake) ?? '0'))));
+  const scale = (f: (y: bigint) => bigint) => setStake(whole(f(BigInt(yocto(stake) ?? '0'))));
   const sorted = [...rooms].sort((a, b) => +(a.status === 'open') - +(b.status === 'open')
     || (sort === 'new' ? b.matchId - a.matchId : (sort === 'high' ? -1 : 1) * Math.sign(Number(BigInt(a.stake) - BigInt(b.stake)))));
 
   return (
     <main>
-      <h1 className="sr">Coinflip: heads or tails, settled on NEAR</h1>{/* title art lives in the bg image */}
+      <h1 className="sr">Coinflip: heads or tails, settled on-chain</h1>{/* title art lives in the bg image */}
       <section className="hero">
         <div className="ttl">
           <p className="acc">Pick a side and flip</p>
@@ -129,10 +129,10 @@ function Lobby({ api, go }: { api: Api; go: (id: number) => void }) {
             <span className="lbl">Bet Amount <small>win {fmt(payout(yocto(stake) ?? '0'))}</small></span>
             <div className="bet">
               <N />
-              <input inputMode="decimal" aria-label="Bet amount in NEAR" value={stake} onChange={(e) => setStake(e.target.value)} />
+              <input inputMode="decimal" aria-label="Bet amount in SOL" value={stake} onChange={(e) => setStake(e.target.value)} />
               <button onClick={() => scale((y) => y / 2n)}>1/2</button>
               <button onClick={() => scale((y) => (y * 2n > bal ? bal : y * 2n))}>2x</button>
-              <button onClick={() => setStake(near(bal))}>MAX</button>
+              <button onClick={() => setStake(whole(bal))}>MAX</button>
             </div>
           </div>
           <div className="fld">
@@ -311,7 +311,7 @@ function Root() {
 }
 
 export const App = () => (
-  <NearProvider config={{ network: NETWORK }}>
+  <WalletProvider config={{ network: NETWORK }}>
     <Root />
-  </NearProvider>
+  </WalletProvider>
 );

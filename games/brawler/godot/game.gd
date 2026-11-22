@@ -1,5 +1,5 @@
 # Port of client/src/lib/render/draw.ts + session loop. Sim = sim.gd, art = rig.gd (original gen-1 monster-folk).
-# Wallet goes through the Near autoload (near_bridge.gd) -> parent page /godot -> user's wallet.
+# Wallet goes through the Wallet autoload (wallet_bridge.gd) -> parent page /godot -> user's wallet.
 extends Node2D
 
 const W := 1280.0
@@ -48,7 +48,7 @@ func _ready() -> void:
 	parts = data.parts
 	sim = Sim.new(data.moves, data.stages)
 	_build_menu()
-	Near.account_changed.connect(func(a): account_lbl.text = "Wallet: %s" % (a if a else "not connected"))
+	Wallet.account_changed.connect(func(a): account_lbl.text = "Wallet: %s" % (a if a else "not connected"))
 	if "--demo" in OS.get_cmdline_user_args(): # attract mode: both fighters mash random inputs (also used for headless smoke tests)
 		demo = true
 		_start()
@@ -331,18 +331,18 @@ func _show(label: String, r: Dictionary) -> void:
 
 func _on_connect() -> void:
 	status.text = "Connecting…"
-	var r := await Near.connect_wallet()
+	var r := await Wallet.connect_wallet()
 	_show("Connect", r)
 	if r.ok and r.data:
 		account_lbl.text = "Wallet: %s" % r.data
 
 func _on_sign() -> void:
 	status.text = "Check your wallet to sign…"
-	_show("Signed", await Near.sign("brawler-arena:godot:%d" % Time.get_unix_time_from_system()))
+	_show("Signed", await Wallet.sign("brawler-arena:godot:%d" % Time.get_unix_time_from_system()))
 
 func _on_create() -> void:
 	status.text = "Confirm the transaction in your wallet…"
-	var r := await Near.create_match()
+	var r := await Wallet.create_match()
 	_show("Room", r)
 	if r.ok:
 		match_id = int(r.data.matchId)
@@ -351,7 +351,7 @@ func _on_create() -> void:
 
 func _on_cancel() -> void:
 	status.text = "Confirm cancel in your wallet…"
-	var r := await Near.cancel_match(match_id)
+	var r := await Wallet.cancel_match(match_id)
 	_show("Cancel", r)
 	if r.ok:
 		btn_cancel.visible = false

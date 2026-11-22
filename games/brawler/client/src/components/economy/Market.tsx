@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { fmt, useWallet } from '@/lib/near.ts';
+import { fmt, UNIT, useWallet } from '@/lib/chain.ts';
 import { useMonsters, type NftMonster } from '@/lib/nft.ts';
 import { short } from '@/lib/format.ts';
 import { useLoad } from '@/hooks/async.ts';
@@ -15,7 +15,7 @@ function MarketCard({ m, rent, me }: { m: NftMonster; rent: boolean; me: string 
       <span className="tile-meta" title={m.owner}>{m.owner === me ? 'Yours' : `Owner ${short(m.owner)}`}</span>
       {m.titles.length > 0 && <Badges m={{ ...m, price: undefined }} me={me} />}
       <b className="price row-ico"><Ico n="coin" />
-        {rent && m.rentOffer ? `${fmt(m.rentOffer.pricePerDay)} NEAR / day, up to ${m.rentOffer.maxDays} days` : `${fmt(m.price)} NEAR`}
+        {rent && m.rentOffer ? `${fmt(m.rentOffer.pricePerDay)} ${UNIT} / day, up to ${m.rentOffer.maxDays} days` : `${fmt(m.price)} ${UNIT}`}
       </b>
     </a>
   );

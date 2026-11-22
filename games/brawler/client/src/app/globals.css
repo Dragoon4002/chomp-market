@@ -587,14 +587,6 @@ a.lb-who:hover b { color: var(--gold); text-decoration: underline; }
 .funds-amount b { font-weight: 400; color: var(--gold); }
 .funds-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .funds-actions .btn { width: 100%; }
-.anychain { border-top: 2px dashed var(--ink); padding-top: 14px; }
-.anychain[open] { display: grid; gap: 12px; }
-.anychain summary { cursor: pointer; font-family: var(--font-display); font-size: 20px; }
-.anychain summary small { color: var(--muted); font-size: 14px; margin-left: 6px; }
-.anychain-warn { margin: 0; padding: 10px 12px; border: 2px solid var(--gold); border-radius: 10px; color: var(--cream); font-size: 15px; }
-.anychain-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px; align-items: end; }
-.anychain-form select { width: 100%; min-width: 0; }
-.anychain .funds-kv, .anychain .note { margin: 0; }
 
 .hub-practice { --bh: 64px; font-size: 28px; }
 .practice-hint { position: fixed; top: 52px; left: 50%; transform: translateX(-50%); font-size: 12px; opacity: 0.85; pointer-events: none; white-space: nowrap; }

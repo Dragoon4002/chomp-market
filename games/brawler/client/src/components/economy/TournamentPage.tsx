@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { STAGE_IDS } from '@/lib/stages.ts';
 import { DEMO } from '@/lib/demo.ts';
 import { useLobby } from '@/lib/lobby.ts';
-import { fmt, useArena, useWallet, type MatchView } from '@/lib/near.ts';
+import { fmt, UNIT, useArena, useWallet, type MatchView } from '@/lib/chain.ts';
 import { useMonsters, type NftMonster } from '@/lib/nft.ts';
 import { short } from '@/lib/format.ts';
 import { useAct, useLoad } from '@/hooks/async.ts';
@@ -68,7 +68,7 @@ export function TournamentPage({ id }: { id: number }) {
       <a className="navlink row-ico" href="/tournaments"><Ico n="icon-back" />All tournaments</a>
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <div><h1 className="row-ico"><Ico n="trophy" className="ico h" />Tournament #{t.id}</h1>
-          <p className="sub">{t.size} players, entry {fmt(t.entry_fee)} NEAR, pot {fmt(t.pot)} NEAR{t.bettable ? ', bets open' : ''}</p></div>
+          <p className="sub">{t.size} players, entry {fmt(t.entry_fee)} {UNIT}, pot {fmt(t.pot)} {UNIT}{t.bettable ? ', bets open' : ''}</p></div>
         <span className={`chip row-ico ${t.status === 'live' ? 'gold' : ''}`}><Ico n={STATUS_ICON[t.status]} />{t.status}</span>
       </div>
       {t.champion && <section className="slab"><h2 className="row-ico"><Ico n="trophy" />Champion: {short(t.champion)}{t.champion === me ? ' (you)' : ''}</h2></section>}
@@ -99,7 +99,7 @@ export function TournamentPage({ id }: { id: number }) {
                   reloadMine();
                   const now = await arena.getTournament(t.id);
                   if (!ok || !now?.entrants.some((x) => x.account === me)) throw new Error('Monster busy or unavailable. Fee refunded.');
-                }, 'Entered. Good luck!')}><span><Ico n="coin" />Enter for {fmt(t.entry_fee)} NEAR</span></button>
+                }, 'Entered. Good luck!')}><span><Ico n="coin" />Enter for {fmt(t.entry_fee)} {UNIT}</span></button>
               </>
             )}
         </section>

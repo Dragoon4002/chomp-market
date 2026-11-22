@@ -128,7 +128,7 @@ export default function Economy() {
                 {m.shelf.map((s, i) => <span key={s.name} className="flex items-center gap-1"><span className="size-2.5 rounded-full" style={{ background: KIND_COLOR[s.kind], opacity: s.base > 0.05 || m.name !== "Smithy" ? 1 : 0.6 }} />{s.name} <span className="tabular-nums text-muted">{f.ask[i]}</span></span>)}
               </div>
               <Chart label="Units in stock" unit="units" digits={0} t={t} closed={closed} series={[{ color: "var(--color-teal)", data: m.frames.map((x) => x.stock) }]} />
-              <Chart label={`Cash (floor ${FLOOR} dashed)`} unit="NEAR" t={t} closed={closed} floor={FLOOR} series={[{ color: "var(--color-gold)", data: m.frames.map((x) => x.cash) }]} />
+              <Chart label={`Cash (floor ${FLOOR} dashed)`} unit="SOL" t={t} closed={closed} floor={FLOOR} series={[{ color: "var(--color-gold)", data: m.frames.map((x) => x.cash) }]} />
             </Panel>
           );
         })}

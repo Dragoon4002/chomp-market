@@ -8,14 +8,9 @@
     "start": "next start"
   },
   "dependencies": {
-    "@fast-auth-near/javascript-provider": "^1.4.1",
-    "@hot-labs/near-connect": "^0.11.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "jose": "^6.2.17",
     "lucide-react": "^1.73.0",
-    "near-api-js": "^7.2.0",
-    "near-connect-hooks": "^1.1.6",
     "next": "16.4.6",
     "radix-ui": "^1.8.1",
     "react": "19.3.0",

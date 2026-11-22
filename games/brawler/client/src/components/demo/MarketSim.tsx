@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { DEMO_ROOMS } from '@/lib/demo.ts';
 import { simulate, type Entry } from '@/lib/market.ts';
-import { fmt } from '@/lib/near.ts';
+import { fmt, UNIT } from '@/lib/chain.ts';
 import { signed } from '@/lib/format.ts';
 import { PriceChart } from '@/components/rooms/PriceChart.tsx';
 import { Ico } from '@/components/ui.tsx';
@@ -22,14 +22,14 @@ export function MarketSim() {
   const rows = names.map((who) => {
     let paid = 0n, settled = 0n;
     for (const e of m.ledger) if (e.who === who) {
-      if (e.kind === 'order') paid += e.near;
-      else if (e.kind === 'cancel') paid -= e.near;
-      else if (e.kind === 'payout' || e.kind === 'refund') settled += e.near;
+      if (e.kind === 'order') paid += e.amt;
+      else if (e.kind === 'cancel') paid -= e.amt;
+      else if (e.kind === 'payout' || e.kind === 'refund') settled += e.amt;
     }
     return { who, paid, settled, pnl: settled - paid };
   }).filter((r) => r.paid > 0n).sort((x, y) => (y.pnl > x.pnl ? 1 : -1));
   const traderNet = rows.reduce((s, r) => s + r.pnl, 0n);
-  const result = m.winner === null ? 'Match void: everyone gets back exactly what they paid' : `${FIGHTERS[m.winner]} wins: each ${FIGHTERS[m.winner]} share pays 0.01 NEAR`;
+  const result = m.winner === null ? 'Match void: everyone gets back exactly what they paid' : `${FIGHTERS[m.winner]} wins: each ${FIGHTERS[m.winner]} share pays 0.01 ${UNIT}`;
   const select = (label: string, value: string | number, set: (v: string) => void, opts: [string | number, string][]) => (
     <label className="row">{label}<select value={value} onChange={(e) => set(e.target.value)}>{opts.map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select></label>
   );
@@ -53,19 +53,19 @@ export function MarketSim() {
           <h2>{FIGHTERS[0]} price</h2>
           <PriceChart pts={m.history.map(([, b]) => b / 1e4)} />
           <p className="note">Ends at {Math.round(m.price / 100)}%. {result}.</p>
-          <p className="note">A {FIGHTERS[0]} bid at p% and a {FIGHTERS[1]} bid at q% trade when p + q ≥ 100%: together they fund one 0.01 NEAR share of each, the resting order's price sets the trade. Fee {Number(m.feeBps) / 100}% of winnings.</p>
+          <p className="note">A {FIGHTERS[0]} bid at p% and a {FIGHTERS[1]} bid at q% trade when p + q ≥ 100%: together they fund one 0.01 {UNIT} share of each, the resting order's price sets the trade. Fee {Number(m.feeBps) / 100}% of winnings.</p>
         </section>
         <section className="slab sim-block">
           <h2>The books</h2>
           <dl className="kv">
-            <dt>Paid in (orders − cancels)</dt><dd>{fmt(a.in)} NEAR</dd>
-            <dt>Paid at settlement</dt><dd>{fmt(a.payouts)} NEAR</dd>
-            <dt>Fees to treasury</dt><dd>{fmt(a.fees)} NEAR</dd>
-            <dt>Traders net</dt><dd><b className={traderNet >= 0n ? 'pnl-up' : 'pnl-down'}>{signed(traderNet)} NEAR</b></dd>
+            <dt>Paid in (orders − cancels)</dt><dd>{fmt(a.in)} {UNIT}</dd>
+            <dt>Paid at settlement</dt><dd>{fmt(a.payouts)} {UNIT}</dd>
+            <dt>Fees to treasury</dt><dd>{fmt(a.fees)} {UNIT}</dd>
+            <dt>Traders net</dt><dd><b className={traderNet >= 0n ? 'pnl-up' : 'pnl-down'}>{signed(traderNet)} {UNIT}</b></dd>
             <dt>Difference</dt><dd>{a.dust.toString()} yocto</dd>
           </dl>
           <p className={a.dust === 0n ? 'pnl-up' : 'pnl-down'} role="status">
-            {a.dust === 0n ? '✓ Balanced to the yocto: every NEAR in was paid out or taken as fees.' : '✗ Books do not balance.'}
+            {a.dust === 0n ? `✓ Balanced to the yocto: every ${UNIT} in was paid out or taken as fees.` : '✗ Books do not balance.'}
           </p>
         </section>
       </div>
@@ -88,11 +88,11 @@ export function MarketSim() {
         <h2>Every payment ({m.ledger.length})</h2>
         <div className="sim-scroll tall">
           <table className="sim-table">
-            <thead><tr><th>#</th><th>Who</th><th>Action</th><th>NEAR</th></tr></thead>
+            <thead><tr><th>#</th><th>Who</th><th>Action</th><th>{UNIT}</th></tr></thead>
             <tbody>
               {m.ledger.map((e, k) => (
                 <tr key={k} className={e.kind === 'fee' ? 'muted' : ''}>
-                  <td>{k + 1}</td><td>{e.who}</td><td>{ACTION[e.kind]}</td><td>{fmt(e.near)}</td>
+                  <td>{k + 1}</td><td>{e.who}</td><td>{ACTION[e.kind]}</td><td>{fmt(e.amt)}</td>
                 </tr>
               ))}
             </tbody>

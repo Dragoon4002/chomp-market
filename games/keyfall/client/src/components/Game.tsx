@@ -74,7 +74,7 @@ function Waiting({ m, stake, onMenu }: { m: Match; stake?: string; onMenu: () =>
       <div className="sheet">
         <h2 className="h-gold">Room code</h2>
         <p className="room-code" aria-live="polite">{code}</p>
-        {stake && stake !== '0' && <p className="stake-chip">Stake {fmt(stake)} NEAR · winner takes pot</p>}
+        {stake && stake !== '0' && <p className="stake-chip">Stake {fmt(stake)} SOL · winner takes pot</p>}
         <div className="row">
           <input className="field" readOnly value={link} aria-label="Share link" onFocus={(e) => e.target.select()} />
           <button className="btn sm" onClick={copy} disabled={!link}>{copied ? 'Copied' : 'Copy link'}</button>

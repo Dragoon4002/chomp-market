@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { fmt, useArena, type MatchView } from '@/lib/near.ts';
+import { fmt, UNIT, useArena, type MatchView } from '@/lib/chain.ts';
 import { history, monster } from '@/lib/store.ts';
 import { SERVER } from '@/lib/session.ts';
 import { short } from '@/lib/format.ts';
@@ -57,7 +57,7 @@ export function Stats({ fights }: { fights: Fight[] }) {
   const tiles: [string, string, string][] = [
     ['trophy', 'Wins', String(wins)], ['skull', 'Losses', String(losses)],
     ['icon-history', 'Win rate', wins + losses ? `${Math.round((wins / (wins + losses)) * 100)}%` : '—'],
-    ['coin', 'NEAR won', fmt(won.toString())],
+    ['coin', `${UNIT} won`, fmt(won.toString())],
   ];
   return (
     <section className="slab stat-tiles" aria-label="Record">
@@ -83,7 +83,7 @@ export function History({ fights, loading }: { fights: Fight[]; loading?: boolea
                   <td><span className={`chip row-ico ${f.won ? 'gold' : ''}`}><Ico n={f.won ? 'trophy' : f.won === null ? 'icon-refresh' : 'skull'} />{f.won ? 'Won' : f.won === null ? (f.stake === '0' ? 'No result' : 'Refund') : 'Lost'}</span></td>
                   <td>{f.mine}</td>
                   <td>{f.vsAccount ? <a className="history-vs" href={`/player/${encodeURIComponent(f.vsAccount)}`}><b>{short(f.vsAccount)}</b>{f.vs !== f.vsAccount && <small>{f.vs}</small>}</a> : f.vs}</td>
-                  <td>{fmt(f.stake)} NEAR</td>
+                  <td>{fmt(f.stake)} {UNIT}</td>
                   <td><span className={`chip kind-${f.kind.toLowerCase()}`}>{f.kind}{f.matchId != null ? ` #${f.matchId}` : ''}</span></td>
                   <td className="muted">{when(f.at)}</td>
                   <td>{f.key && <a className="row-ico" href={`/replay/${encodeURIComponent(f.key)}`}><Ico n="icon-play" />Replay</a>}</td>

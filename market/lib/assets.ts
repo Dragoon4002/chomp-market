@@ -1,18 +1,14 @@
 "use client";
-import { useNearWallet } from "near-connect-hooks";
-import { nearToYocto, yoctoToNear } from "near-api-js";
 import { demoApi } from "./demo";
-import { openSocial, socialCall, socialSignOut, useSocial } from "./social";
-import { FASTAUTH } from "./fastauth";
 
-export const ASSETS_ID = process.env.NEXT_PUBLIC_ASSETS_ID || "v2.brawler-monsters-5c8e2b.testnet";
+export const ASSETS_ID = process.env.NEXT_PUBLIC_ASSETS_ID || "";
 export const BRAWLER_URL = process.env.NEXT_PUBLIC_BRAWLER_URL || "http://localhost:3000";
 // ponytail: hosted fallbacks are placeholders; set NEXT_PUBLIC_<GAME>_URL per deploy
 export const GAMES = [
   { id: "ribbon", soon: true, name: "Ribbon Rush", url: process.env.NEXT_PUBLIC_RIBBON_URL || "https://ribbon-rush.vercel.app", desc: "Fast-paced racing battles with strategy and power-ups." },
   { id: "brawler", name: "Brawler Arena", url: BRAWLER_URL, desc: "Action-packed arena battles with unique heroes and abilities." },
   { id: "keyfall", soon: true, name: "Keyfall", url: process.env.NEXT_PUBLIC_KEYFALL_URL || "http://localhost:3004", desc: "Type fast, shoot down bombers, defend your city in a 1v1 duel." },
-  { id: "coinflip", soon: true, name: "CoinFlip", url: process.env.NEXT_PUBLIC_COINFLIP_URL || "http://localhost:3003", desc: "Heads or tails, settled on NEAR. A simple, fast, and fair game." },
+  { id: "coinflip", soon: true, name: "CoinFlip", url: process.env.NEXT_PUBLIC_COINFLIP_URL || "http://localhost:3003", desc: "Heads or tails. A simple, fast, and fair game." },
 ];
 export const art = (f: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/dash/${f}`;
 export const DEMO =
@@ -20,8 +16,6 @@ export const DEMO =
   (typeof window !== "undefined" &&
     (new URLSearchParams(location.search).has("demo") || sessionStorage.getItem("demo") === "1") &&
     (sessionStorage.setItem("demo", "1"), true));
-const GAS = "30000000000000", GAS_X = "100000000000000";
-const STORAGE = nearToYocto("0.02"); // contract refunds unused storage deposit
 
 export const STAT_KINDS = ["Power", "Agility", "Durability", "Speed"] as const;
 export const EFFECT_KINDS = ["AirJump", "Lifesteal", "QuickDodge", "SecondWind"] as const;
@@ -80,80 +74,37 @@ export interface Api {
   withdrawOwed(): Promise<unknown>;
 }
 
-const cache = new Map<string, { t: number; p: Promise<unknown> }>();
-const cached = <T,>(key: string, f: () => Promise<T>): Promise<T> => {
-  const hit = cache.get(key);
-  if (hit && Date.now() - hit.t < 30_000) return hit.p as Promise<T>;
-  const p = f().catch((e) => { cache.delete(key); throw e; });
-  cache.set(key, { t: Date.now(), p });
-  return p;
-};
+// TODO(solana): wallet adapter + program/MagicBlock reads. Signed-out stub: views come back empty, calls throw.
+const SOON = () => Promise.reject(new Error("On-chain trading coming soon (Solana port in progress)"));
+const none = <T,>(v: T) => () => Promise.resolve(v);
 
 export function useAssets(): Api {
-  const w = useNearWallet();
-  const social = useSocial();
   if (DEMO) return demoApi;
-  const me = social?.accountId || w.signedAccountId || null;
-  const view = <T,>(method: string, args: Record<string, unknown> = {}) =>
-    w.viewFunction({ contractId: ASSETS_ID, method, args }) as Promise<T>;
-  const call = (method: string, args: Record<string, unknown>, deposit: bigint | string = "1", gas = GAS) => {
-    cache.clear();
-    const p = { contractId: ASSETS_ID, method, args, gas, deposit: String(deposit) };
-    return social ? socialCall(social, p) : w.callFunction(p);
-  };
-  const page = <T,>(method: string) => cached(method, async () => {
-    const all: T[] = [];
-    for (let from = 0; ; from += 50) {
-      const rows = await view<T[]>(method, { from, limit: 50 });
-      all.push(...rows);
-      if (rows.length < 50) return all;
-    }
-  });
-  const mine = () => (me ? view<Monster[]>("monsters_of", { account_id: me, from: 0, limit: 50 }) : Promise.resolve([]));
   return {
-    demo: false, account: me, signIn: () => (FASTAUTH.enabled ? openSocial() : w.signIn()), signOut: () => (social ? socialSignOut() : w.signOut()),
-    skills: () => page<Skill>("skill_types"),
-    collections: () => page<Collection>("collections"),
-    presales: () => page<Presale>("presales"),
-    monsters: () => page<Monster>("listings"),
-    monster: (id) => view<Monster | null>("get_monster", { token_id: id }),
-    history: (key) => cached(`h:${key}`, () => view<Point[]>("price_history", { key })),
-    skillListings: (skill) => view<SkillListing[]>("skill_listings", { skill, from: 0, limit: 50 }),
-    presaleBought: (id) => (me ? view<number>("presale_bought", { id, account_id: me }) : Promise.resolve(0)),
-    presaleAllowed: (id) => (me ? view<boolean>("presale_allowed", { id, account_id: me }) : Promise.resolve(false)),
-    isCreator: () => (me ? view<boolean>("is_creator", { account_id: me }) : Promise.resolve(false)),
-    holdings: async () => {
-      if (!me) return [];
-      const [rows, mons] = await Promise.all([view<[number, number, number][]>("skills_of", { account_id: me }), mine()]);
-      return rows.map(([skill, free, listed]) => ({ skill, free, listed, equipped: mons.flatMap((m) => m.skills).filter((s) => s.id === skill).length }));
-    },
-    myMonsters: mine,
-    owed: () => (me ? view<string>("owed_of", { account_id: me }) : Promise.resolve("0")),
-    buySkill: (l, qty) => call("buy_skill", { seller: l.seller, skill: l.skill, qty }, BigInt(l.price_each) * BigInt(qty) + STORAGE, GAS_X),
-    listSkill: (skill, qty, priceEach) => call("list_skill", { skill, qty, price_each: priceEach }, STORAGE),
-    cancelSkillListing: (skill) => call("cancel_skill_listing", { skill }, "0"),
-    buyPresale: (p, qty) => call("buy_presale", { id: p.id, qty }, BigInt(p.price) * BigInt(qty) + STORAGE, GAS_X),
-    buyMonster: (m) => call("buy", { token_id: m.token_id }, m.price ?? "0", GAS_X),
-    listMonster: (id, price) => call("list", { token_id: id, price }),
-    delistMonster: (id) => call("delist", { token_id: id }, "0"),
-    createCollection: (c) => call("create_collection", c, STORAGE),
-    createSkill: (s) => call("create_skill", { ...s }, STORAGE),
-    createPresale: (p) => call("create_presale", { ...p }, STORAGE + nearToYocto("0.002") * BigInt(p.allowlist?.length ?? 0)),
-    withdrawOwed: () => call("withdraw_owed", {}, "0", GAS_X),
+    demo: false, account: null, signIn: () => alert("Wallet sign-in coming soon (Solana port in progress)"), signOut: () => {},
+    skills: none([]), collections: none([]), presales: none([]), monsters: none([]), monster: none(null), history: none([]),
+    skillListings: none([]), presaleBought: none(0), presaleAllowed: none(false), isCreator: none(false), holdings: none([]),
+    myMonsters: none([]), owed: none("0"),
+    buySkill: SOON, listSkill: SOON, cancelSkillListing: SOON, buyPresale: SOON, buyMonster: SOON, listMonster: SOON,
+    delistMonster: SOON, createCollection: SOON, createSkill: SOON, createPresale: SOON, withdrawOwed: SOON,
   };
 }
 
-export const toYocto = (n: string | number) => nearToYocto(String(n) as `${number}`).toString();
-export const near = (y: string | bigint | null | undefined) => (y == null ? 0 : Number(yoctoToNear(BigInt(y))));
+// TODO(solana): 24-decimal base units kept from the old chain; switch to lamports (1e9).
+export const toYocto = (n: string | number) => {
+  const [i, f = ""] = String(n).split(".");
+  return (BigInt(i || "0") * 10n ** 24n + BigInt((f + "0".repeat(24)).slice(0, 24))).toString();
+};
+export const amount = (y: string | bigint | null | undefined) => (y == null ? 0 : Number(BigInt(y)) / 1e24);
 export const fmt = (y: string | bigint | null | undefined) => {
-  const n = near(y);
+  const n = amount(y);
   return n === 0 ? "0" : n < 0.01 ? n.toPrecision(2) : n.toFixed(n < 10 ? 3 : 2).replace(/\.?0+$/, "");
 };
 export const change24 = (h: Point[]) => {
   if (h.length < 2) return 0;
-  const last = near(h[h.length - 1][1]);
+  const last = amount(h[h.length - 1][1]);
   const cut = Date.now() - 86_400_000;
-  const prev = near([...h].reverse().find(([t]) => t <= cut)?.[1] ?? h[0][1]);
+  const prev = amount([...h].reverse().find(([t]) => t <= cut)?.[1] ?? h[0][1]);
   return prev ? ((last - prev) / prev) * 100 : 0;
 };
 export const skillKey = (id: number) => `skill:${id}`;

@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
-export const metadata: Metadata = { title: 'Coinflip', description: 'PvP commit-reveal coin flip on NEAR' };
+export const metadata: Metadata = { title: 'Coinflip', description: 'PvP commit-reveal coin flip' };
 export const viewport: Viewport = { themeColor: '#0b0f14', width: 'device-width', initialScale: 1 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -2,7 +2,8 @@
 # blender -b --python face.py -- 128 120 104 82 $PWD/public/head.png -0.13 -0.13 0.85
 import bpy, numpy as np, sys
 args=sys.argv[sys.argv.index('--')+1:]; cx,cy,a,b,out=float(args[0]),float(args[1]),float(args[2]),float(args[3]),args[4]
-i=bpy.data.images.load("/home/sounak/programming/Web3/Web3 Hackathons/near/brawler_arena/games/brawler/client/public/ui/coin.webp")
+import os
+i=bpy.data.images.load(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../brawler/client/public/ui/coin.webp"))
 w,h=i.size; p=np.array(i.pixels[:]).reshape(h,w,4)[::-1]
 eM=np.array([-0.6822834336328489, 0.7310877623036579]); em=np.array([-0.7310877623036579, -0.6822834336328489])
 N=512; y,x=np.mgrid[0:N,0:N]; u=(x+0.5)/N*2-1; v=(y+0.5)/N*2-1

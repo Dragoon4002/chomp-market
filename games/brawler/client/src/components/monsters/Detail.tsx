@@ -1,6 +1,6 @@
 import { Fragment, useState } from 'react';
 import { archetype, type Dna } from '@/lib/genes.ts';
-import { fmt, toYocto, useWallet } from '@/lib/near.ts';
+import { fmt, UNIT, toYocto, useWallet } from '@/lib/chain.ts';
 import { useMonsters, type HistoryEntry, type NftMonster } from '@/lib/nft.ts';
 import { when } from '@/lib/format.ts';
 import { useAct, useLoad } from '@/hooks/async.ts';
@@ -34,19 +34,19 @@ function Trade({ m, me, reload }: { m: NftMonster; me: string; reload: () => voi
           {held && <p className="note">Busy right now (in a match or rented out), so it cannot be listed or offered.</p>}
           <div className="row">
             {m.price ? (
-              <><span className="chip gold row-ico"><Ico n="coin" />Listed at {fmt(m.price)} NEAR</span>
+              <><span className="chip gold row-ico"><Ico n="coin" />Listed at {fmt(m.price)} {UNIT}</span>
                 <button className="btn ghost" disabled={act.busy} onClick={() => act.run(() => api.delist(m.id), 'Listing removed.')}><span><Ico n="icon-close" />Delist</span></button></>
             ) : (
-              <><label className="row">Price <input type="number" min="0" step="0.1" value={price} onChange={(e) => setPrice(e.target.value)} aria-label="Sale price in NEAR" style={{ width: 100 }} /> NEAR</label>
+              <><label className="row">Price <input type="number" min="0" step="0.1" value={price} onChange={(e) => setPrice(e.target.value)} aria-label={`Sale price in ${UNIT}`} style={{ width: 100 }} /> {UNIT}</label>
                 <button className="btn" disabled={act.busy || held || !(+price > 0)} onClick={() => act.run(() => api.list(m.id, toYocto(price)), 'Listed for sale.')}><span><Ico n="coin" />List for sale</span></button></>
             )}
           </div>
           <div className="row">
             {m.rentOffer ? (
-              <><span className="chip gold row-ico"><Ico n="icon-timer" />Rent {fmt(m.rentOffer.pricePerDay)} NEAR/day, max {m.rentOffer.maxDays} days</span>
+              <><span className="chip gold row-ico"><Ico n="icon-timer" />Rent {fmt(m.rentOffer.pricePerDay)} {UNIT}/day, max {m.rentOffer.maxDays} days</span>
                 <button className="btn ghost" disabled={act.busy} onClick={() => act.run(() => api.cancelRent(m.id), 'Offer cancelled.')}><span><Ico n="icon-close" />Cancel offer</span></button></>
             ) : (
-              <><label className="row">Per day <input type="number" min="0" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} aria-label="Rent per day in NEAR" style={{ width: 90 }} /> NEAR</label>
+              <><label className="row">Per day <input type="number" min="0" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} aria-label={`Rent per day in ${UNIT}`} style={{ width: 90 }} /> {UNIT}</label>
                 <label className="row">Max days <input type="number" min="1" step="1" value={maxDays} onChange={(e) => setMaxDays(e.target.value)} aria-label="Maximum rental days" style={{ width: 70 }} /></label>
                 <button className="btn alt" disabled={act.busy || held || !(+rate > 0) || !(+maxDays >= 1)} onClick={() => act.run(() => api.offerRent(m.id, toYocto(rate), Math.floor(+maxDays)), 'Rent offer published.')}><span><Ico n="icon-timer" />Offer for rent</span></button></>
             )}
@@ -54,12 +54,12 @@ function Trade({ m, me, reload }: { m: NftMonster; me: string; reload: () => voi
         </>
       ) : (
         <>
-          {m.price && <div className="row"><b className="row-ico"><Ico n="coin" />{fmt(m.price)} NEAR</b>
+          {m.price && <div className="row"><b className="row-ico"><Ico n="coin" />{fmt(m.price)} {UNIT}</b>
             <button className="btn big" disabled={act.busy} onClick={() => gate(() => api.buy(m.id, m.price!), 'Bought! It is yours now.')}><span><Ico n="coin" />Buy</span></button></div>}
           {m.rentOffer && !rented && !m.price && (
             <div className="row">
               <label className="row">Days <input type="number" min="1" max={m.rentOffer.maxDays} step="1" value={days} onChange={(e) => setDays(e.target.value)} aria-label="Days to rent" style={{ width: 70 }} /> (max {m.rentOffer.maxDays})</label>
-              <b className="row-ico"><Ico n="coin" />{fmt((BigInt(m.rentOffer.pricePerDay) * BigInt(d)).toString())} NEAR total</b>
+              <b className="row-ico"><Ico n="coin" />{fmt((BigInt(m.rentOffer.pricePerDay) * BigInt(d)).toString())} {UNIT} total</b>
               <button className="btn alt" disabled={act.busy || m.lockedUntil > now} onClick={() => gate(() => api.rent(m.id, d, (BigInt(m.rentOffer!.pricePerDay) * BigInt(d)).toString()), 'Rented. You can fight with it now.')}><span><Ico n="icon-timer" />Rent for {d} day{d > 1 ? 's' : ''}</span></button>
             </div>
           )}

@@ -1,11 +1,11 @@
 # Skills contract interface (monsters contract, final)
 
-Contract: `v2.brawler-monsters-5c8e2b.testnet` (deployed via `scripts/deploy-monsters-v2.mjs`). All existing monster methods are unchanged.
+Former monsters contract interface (contract removed). Clients still use these JSON shapes; TODO(solana): mirror them in the program.
 
 ## Conventions
 - Skill id `u32` (JSON number) in all custom methods. NEP-245 token id = `"skill:<id>"` (string).
 - **Unit counts are JSON numbers (u32)**: `qty`, `free`, `listed`, `minted`, `sold`, `max_supply`, `cap_total`, `per_wallet`, `listed_qty`. Only the NEP-245 `mt_*` methods use U128 strings for amounts.
-- Prices and NEAR amounts are yocto U128 strings.
+- Prices and amounts are base-unit U128 strings.
 - Account args are named `account_id` (the plan's `acct`/`account`).
 - `kind` strings: `"Power" | "Agility" | "Durability" | "Speed"` (stat, mag 1..2) and `"AirJump" | "Lifesteal" | "QuickDodge" | "SecondWind"` (effect, mag 1). Stat mapping: Power=str, Agility=dex, Durability=def, Speed=spd.
 - `rarity` strings: `"Common" | "Rare" | "Epic"`.

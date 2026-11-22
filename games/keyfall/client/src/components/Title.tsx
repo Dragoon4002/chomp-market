@@ -42,7 +42,7 @@ export function Title({ go }: { go: (s: Screen) => void }) {
     const p = await peek(c);
     if (p.full) throw new Error('room is full');
     if (p.matchId != null && p.stake !== '0') {
-      if (!k.account) throw new Error(`staked room (${fmt(p.stake)} NEAR) — connect wallet first`);
+      if (!k.account) throw new Error(`staked room (${fmt(p.stake)} SOL) — connect wallet first`);
       setConfirm({ code: c, matchId: p.matchId, stake: p.stake, host: p.host });
       return;
     }
@@ -61,7 +61,7 @@ export function Title({ go }: { go: (s: Screen) => void }) {
         {DEMO && <span className="tag">demo</span>}
         <div className="wallet">
           {k.account ? (
-            <><span className="acct" title={k.account}>{k.account}</span><span className="bal">{k.balance == null ? '—' : fmt(k.balance)} NEAR</span></>
+            <><span className="acct" title={k.account}>{k.account}</span><span className="bal">{k.balance == null ? '—' : fmt(k.balance)} SOL</span></>
           ) : (
             <button className="btn sm" onClick={() => { click(); void k.signIn(); }}>Connect wallet</button>
           )}
@@ -83,15 +83,15 @@ export function Title({ go }: { go: (s: Screen) => void }) {
         </div>
 
         <div className="field-row">
-          <input className="field stake-in" value={stake} onChange={(e) => setStake(e.target.value.replace(/[^0-9.]/g, ''))} inputMode="decimal" aria-label="Stake in NEAR" />
+          <input className="field stake-in" value={stake} onChange={(e) => setStake(e.target.value.replace(/[^0-9.]/g, ''))} inputMode="decimal" aria-label="Stake in SOL" />
           <button className="btn sm" onClick={hostStaked} disabled={!!busy || !k.account || DEMO || !(+stake > 0)} title={k.account ? undefined : 'Connect wallet to stake'}>
-            {busy === 'Host staked' ? 'Signing…' : 'Stake NEAR'}
+            {busy === 'Host staked' ? 'Signing…' : 'Stake SOL'}
           </button>
         </div>
 
         {confirm && (
           <div className="confirm" role="dialog" aria-label="Confirm stake">
-            <p>Room {confirm.code} by {confirm.host} is staked at <b>{fmt(confirm.stake)} NEAR</b>. Winner takes the pot.</p>
+            <p>Room {confirm.code} by {confirm.host} is staked at <b>{fmt(confirm.stake)} SOL</b>. Winner takes the pot.</p>
             <div className="field-row">
               <button className="btn sm" onClick={confirmJoin} disabled={!!busy}>{busy ? 'Signing…' : 'Stake & join'}</button>
               <button className="btn sm" onClick={() => { click(); setConfirm(null); }}>Cancel</button>

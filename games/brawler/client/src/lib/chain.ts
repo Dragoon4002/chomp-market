@@ -1,13 +1,14 @@
-import { fmt, PLATFORM_ID, toYocto, useBalance, useNearWallet, usePlatform } from '@xyz/platform';
+// Brawler's single chain seam. Calls go through @xyz/platform stubs (throw SOON) unless DEMO.
+// TODO(solana): back useArena/useSignMatch/useWallet with the Solana program + MagicBlock ER/VRF.
+import { fmt, PLATFORM_ID, toYocto, UNIT, useBalance, useWallet as useBaseWallet, usePlatform } from '@xyz/platform';
 import { DEMO, DEMO_ACCOUNT, DEMO_BALANCE, demoArena } from './demo.ts';
 
-export { fmt, toYocto, usePlatform };
+export { fmt, toYocto, UNIT, usePlatform };
 export const CONTRACT_ID = PLATFORM_ID;
 export const GAME = 'brawler';
-const GAS = '30000000000000';
-const GAS_X = '100000000000000'; // monster lock xcc
-const GAS_T = '150000000000000'; // enter_tournament needs 150 Tgas
-const ONE_YOCTO = '1'; // spend calls need full-access key -> wallet confirm
+// TODO(solana): compute budget per ix; values are passed through to the stub unused.
+const GAS = '0', GAS_X = '0', GAS_T = '0';
+const ONE_YOCTO = '1';
 
 export interface MatchView {
   id: number; game: string; host: string; guest: string | null; stake: string; bettable: boolean;
@@ -32,8 +33,9 @@ export interface Limits { owner: string; fee_bps: number; max_bet: string; unit:
 export interface Attestation { match_id: number; winner: number | null; kos: [number, number]; tape_hash: string; signature: string }
 
 export const lowBalance = (have: string | null, need: string) =>
-  `Not enough balance (${fmt(have ?? '0')} of ${fmt(need)} NEAR). Top up in Account.`;
+  `Not enough balance (${fmt(have ?? '0')} of ${fmt(need)} ${UNIT}). Top up in Account.`;
 
+// TODO(solana): platform program ixs (matches, order book, tournaments) — method names kept from the old contract.
 export function useArena() {
   const p = usePlatform();
   if (DEMO) return demoArena;
@@ -88,22 +90,23 @@ export function useArena() {
   };
 }
 
-// NEP-413 seat proof for game server. undefined in demo.
+// Signed seat proof for game server (server verifies in crates/chain). undefined in demo.
+// TODO(solana): ed25519 signMessage from the wallet adapter.
 export type MatchAuth = { publicKey: string; signature: string };
 export type SignMatch = (matchId: number, nonce: string) => Promise<MatchAuth>;
 export function useSignMatch(): SignMatch | undefined {
-  const w = useNearWallet();
+  const w = useBaseWallet();
   if (DEMO) return undefined;
   return async (matchId, nonce) => {
-    const s = await w.signNEP413Message({ message: `brawler-arena:${matchId}`, recipient: CONTRACT_ID, nonce: Uint8Array.from(atob(nonce), (c) => c.charCodeAt(0)) });
+    const s = await w.signMessage({ message: `brawler-arena:${matchId}`, recipient: CONTRACT_ID, nonce: Uint8Array.from(atob(nonce), (c) => c.charCodeAt(0)) });
     return { publicKey: String(s.publicKey), signature: String(s.signature) };
   };
 }
 
 export function useWallet() {
-  const w = useNearWallet();
+  const w = useBaseWallet();
   if (!DEMO) return w;
-  return { ...w, loading: false, signedAccountId: DEMO_ACCOUNT, network: 'testnet', getBalance: async () => 12_345n * 10n ** 21n, signIn: async () => {}, signOut: async () => alert('Demo: wallet disconnected') };
+  return { ...w, loading: false, signedAccountId: DEMO_ACCOUNT, network: 'demo', getBalance: async () => 12_345n * 10n ** 21n, signIn: async () => {}, signOut: async () => alert('Demo: wallet disconnected') };
 }
 
 export function useUnifiedBalance() {

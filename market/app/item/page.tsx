@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { BRAWLER_URL, change24, fmt, KIND_DESC, KIND_LABEL, near, skillKey, toYocto, useAssets, type Point, type Presale, type SkillListing } from "@/lib/assets";
+import { BRAWLER_URL, change24, fmt, KIND_DESC, KIND_LABEL, amount, skillKey, toYocto, useAssets, type Point, type Presale, type SkillListing } from "@/lib/assets";
 import { MERCHANTS, merchantName, reasoning } from "@/lib/merchants";
 import { act, Btn, Chip, cx, Empty, Field, inputCls, Loading, MonsterArt, Panel, Pct, prices, RARITY_TEXT, SkillArt, Sparkline, STATS, useLoad } from "@/components/ui";
 
@@ -18,7 +18,7 @@ function Chart({ h }: { h: Point[] }) {
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
           <p className="text-xs font-extrabold uppercase tracking-wider text-muted">Last sale</p>
-          <p className="font-display text-4xl">{xs.length ? xs[xs.length - 1].toFixed(3) : "—"} <span className="text-2xl text-muted">Ⓝ</span></p>
+          <p className="font-display text-4xl">{xs.length ? xs[xs.length - 1].toFixed(3) : "—"} <span className="text-2xl text-muted">SOL</span></p>
         </div>
         <div className="flex gap-1.5">{RANGES.map(([l], i) => <Chip key={l} on={r === i} onClick={() => setR(i)}>{l}</Chip>)}</div>
       </div>
@@ -48,7 +48,7 @@ function MerchantBadge({ l, h, presales }: { l: SkillListing; h: Point[]; presal
       <button type="button" data-why className="rounded-md border-2 border-ink bg-teal px-1.5 text-[11px] font-extrabold uppercase leading-5 text-ink">Merchant (NPC)</button>
       <span role="tooltip" className="pointer-events-none invisible absolute left-0 top-full z-30 mt-2 w-72 rounded-2xl border-3 border-ink bg-panel-2 p-3 text-sm font-bold text-cream opacity-0 shadow-drop transition group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100">
         <span className="block font-display text-base">{merchantName(l.seller)} prices by rule</span>
-        {q ? <>{q.why}.{Math.abs(q.ask - near(l.price_each)) / q.ask > 0.03 && <span className="mt-1 block text-muted">Listed at {fmt(l.price_each)}; re-lists on its next 2-min tick (when off by &gt;3%).</span>}</> : "Working it out…"}
+        {q ? <>{q.why}.{Math.abs(q.ask - amount(l.price_each)) / q.ask > 0.03 && <span className="mt-1 block text-muted">Listed at {fmt(l.price_each)}; re-lists on its next 2-min tick (when off by &gt;3%).</span>}</> : "Working it out…"}
         <span className="mt-1 block text-xs text-muted">Recomputed here from public chain data with the bot&apos;s own rules file.</span>
       </span>
     </span>
@@ -65,7 +65,7 @@ function Buy({ l, me, onDone, h, presales }: { l: SkillListing; me: boolean; onD
         <span className="block truncate font-bold">{me ? "You" : MERCHANTS.includes(l.seller) ? merchantName(l.seller) : l.seller}</span>
         <span className="text-sm font-extrabold text-muted">{l.qty} available</span>{MERCHANTS.includes(l.seller) && <MerchantBadge l={l} h={h} presales={presales} />}
       </span>
-      <span className="font-display text-xl tabular-nums">{fmt(l.price_each)} Ⓝ</span>
+      <span className="font-display text-xl tabular-nums">{fmt(l.price_each)} SOL</span>
       {me ? <Btn small tone="ghost" onClick={() => act(() => a.cancelSkillListing(l.skill), "Listing cancelled.", onDone)}>Cancel</Btn> : (
         <span className="flex w-full items-center gap-2 sm:w-auto">
           <input type="number" min={1} max={max} value={q} onChange={(e) => setQ(Math.max(1, Math.min(max, Number(e.target.value) || 1)))} aria-label="Quantity" className={cx(inputCls, "h-9 w-16 px-2 text-center")} />
@@ -102,7 +102,7 @@ function SkillItem({ id }: { id: number }) {
         </div>
         <Chart h={h} />
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat k="Floor" v={s.floor ? `${fmt(s.floor)} Ⓝ` : "—"} />
+          <Stat k="Floor" v={s.floor ? `${fmt(s.floor)} SOL` : "—"} />
           <Stat k="24h" v={<Pct v={change24(h)} />} />
           <Stat k="Listed" v={s.listed_qty} />
           <Stat k="Minted" v={`${s.minted}${s.max_supply ? ` / ${s.max_supply}` : ""}`} />
@@ -116,7 +116,7 @@ function SkillItem({ id }: { id: number }) {
         {d.presale && (
           <Link href={`/collection?id=${s.collection}`} className="rounded-3xl border-3 border-ink bg-gradient-to-br from-ember to-gold p-5 text-ink shadow-drop transition hover:-translate-y-1">
             <p className="text-xs font-extrabold uppercase tracking-wider">{d.presale.start_ms > Date.now() ? "Presale soon" : "Presale live"}</p>
-            <p className="font-display text-3xl">{fmt(d.presale.price)} Ⓝ each</p>
+            <p className="font-display text-3xl">{fmt(d.presale.price)} SOL each</p>
             <p className="font-bold">{d.presale.cap_total ? `${d.presale.sold}/${d.presale.cap_total} minted` : "Always in stock"} → Mint</p>
           </Link>
         )}
@@ -125,7 +125,7 @@ function SkillItem({ id }: { id: number }) {
           <p className="mt-1 text-sm font-bold text-muted">You have {free} free{held && Number(held.listed) ? `, ${held.listed} listed` : ""}{held?.equipped ? `, ${held.equipped} equipped` : ""}.</p>
           <form className="mt-4 grid grid-cols-2 gap-3" onSubmit={(e) => { e.preventDefault(); act(() => a.listSkill(id, Number(qty), toYocto(price)), "Listed.", reload); }}>
             <Field label="Quantity"><input className={inputCls} type="number" min={1} max={free} value={qty} onChange={(e) => setQty(e.target.value)} /></Field>
-            <Field label="Price each (Ⓝ)"><input className={inputCls} type="number" min="0.001" step="0.001" inputMode="decimal" placeholder={s.floor ? near(s.floor).toFixed(3) : "0.5"} value={price} onChange={(e) => setPrice(e.target.value)} required /></Field>
+            <Field label="Price each (SOL)"><input className={inputCls} type="number" min="0.001" step="0.001" inputMode="decimal" placeholder={s.floor ? amount(s.floor).toFixed(3) : "0.5"} value={price} onChange={(e) => setPrice(e.target.value)} required /></Field>
             <Btn className="col-span-2" disabled={!free || !a.account}>{free ? "List for sale" : "None to list"}</Btn>
           </form>
         </Panel>
@@ -194,11 +194,11 @@ function MonsterItem({ id }: { id: string }) {
       <aside className="flex flex-col gap-5">
         <Panel className="p-5">
           <p className="text-xs font-extrabold uppercase tracking-wider text-muted">{m.price ? "Price" : "Not for sale"}</p>
-          <p className="font-display text-5xl">{m.price ? <>{fmt(m.price)} <span className="text-3xl text-muted">Ⓝ</span></> : "—"}</p>
+          <p className="font-display text-5xl">{m.price ? <>{fmt(m.price)} <span className="text-3xl text-muted">SOL</span></> : "—"}</p>
           {mine ? (
             m.price ? <Btn className="mt-4 w-full" tone="ghost" onClick={() => act(() => a.delistMonster(m.token_id), "Delisted.", reload)}>Delist</Btn> : (
               <form className="mt-4 flex gap-2" onSubmit={(e) => { e.preventDefault(); act(() => a.listMonster(m.token_id, toYocto(price)), "Listed.", reload); }}>
-                <input className={cx(inputCls, "flex-1")} type="number" min="0.01" step="0.01" placeholder="Price Ⓝ" value={price} onChange={(e) => setPrice(e.target.value)} required aria-label="Price in NEAR" />
+                <input className={cx(inputCls, "flex-1")} type="number" min="0.01" step="0.01" placeholder="Price SOL" value={price} onChange={(e) => setPrice(e.target.value)} required aria-label="Price in SOL" />
                 <Btn>List</Btn>
               </form>
             )

@@ -3,7 +3,7 @@ import type { Monster } from '@/lib/genes.ts';
 import { STAGES, STAGE_IDS, type StageId } from '@/lib/stages.ts';
 import { getAudio, toggleMute } from '@/lib/audio.ts';
 import { DEMO_ROOMS, demoChat } from '@/lib/demo.ts';
-import { useArena, useSignMatch, type Attestation } from '@/lib/near.ts';
+import { useArena, useSignMatch, type Attestation } from '@/lib/chain.ts';
 import { errText } from '@/lib/format.ts';
 import { startBotFight, startOnline, type ChatLine, type HostOpts, type Player, type RoomState } from '@/lib/session.ts';
 import { monsters, recordResult } from '@/lib/store.ts';

@@ -1,5 +1,5 @@
 // Monster genetics: DNA -> fight stats + look, deterministic breeding.
-// Pure + seeded so the same rules can be mirrored in the NEAR contract (Phase 2).
+// Pure + seeded so the same rules can be mirrored on-chain.
 import type { Stats } from './sim/sim.ts';
 
 export interface Dna {

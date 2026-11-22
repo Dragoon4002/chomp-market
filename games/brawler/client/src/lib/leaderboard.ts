@@ -1,8 +1,8 @@
-import type { MatchView } from './near.ts';
+import type { MatchView } from './chain.ts';
 
 export interface Row { account: string; wins: number; played: number; won: bigint }
 
-// won = net NEAR profit from staked wins (opponent's stake minus the pot fee).
+// won = net coin profit from staked wins (opponent's stake minus the pot fee).
 export function rank(matches: MatchView[], feeBps: number, by: 'wins' | 'won'): Row[] {
   const rows = new Map<string, Row>();
   const row = (a: string) => rows.get(a) ?? rows.set(a, { account: a, wins: 0, played: 0, won: 0n }).get(a)!;

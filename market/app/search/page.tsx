@@ -62,7 +62,7 @@ export default function Search() {
               </div>
               <Sparkline data={prices(d.hist[s.id])} className="my-3 h-12" />
               <div className="flex items-end justify-between text-sm">
-                <span><span className="block text-xs font-extrabold text-muted">{s.floor ? "Floor" : "Last"}</span><span className="font-display text-xl">{s.floor ?? s.last_price ? `${fmt(s.floor ?? s.last_price)} Ⓝ` : "—"}</span></span>
+                <span><span className="block text-xs font-extrabold text-muted">{s.floor ? "Floor" : "Last"}</span><span className="font-display text-xl">{s.floor ?? s.last_price ? `${fmt(s.floor ?? s.last_price)} SOL` : "—"}</span></span>
                 <span className="text-right"><span className="block text-xs font-extrabold text-muted">{s.listed_qty} listed</span><Pct v={change24(d.hist[s.id])} /></span>
               </div>
             </Link>
@@ -80,7 +80,7 @@ export default function Search() {
                 {STATS.map(([k, t]) => <span key={k} className="rounded-lg bg-sky-0 py-1.5"><span className="block text-muted uppercase">{k}</span><span className={cx(t, "text-base")}>{m.dna[k]}</span></span>)}
               </div>
               <div className="flex items-end justify-between text-sm">
-                <span><span className="block text-xs font-extrabold text-muted">Price</span><span className="font-display text-xl">{fmt(m.price)} Ⓝ</span></span>
+                <span><span className="block text-xs font-extrabold text-muted">Price</span><span className="font-display text-xl">{fmt(m.price)} SOL</span></span>
                 <span className="font-extrabold text-muted">{m.record.w}W · {m.record.l}L</span>
               </div>
             </Link>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { applySkills, archetype, sanitizeSkills, statsOf, SKILL_FX_MAX, SKILL_SLOTS, type Skill } from '@/lib/genes.ts';
-import { useWallet } from '@/lib/near.ts';
+import { useWallet } from '@/lib/chain.ts';
 import { MARKET_URL, useMonsters, type NftMonster, type SkillType } from '@/lib/nft.ts';
 import { when } from '@/lib/format.ts';
 import { useAct, useLoad } from '@/hooks/async.ts';

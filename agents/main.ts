@@ -5,7 +5,6 @@ import { STAGE_IDS } from '../games/brawler/client/src/lib/stages.ts';
 import { Netplay } from '../games/brawler/client/src/lib/net.ts';
 import { isBot } from '../games/brawler/client/src/lib/bot.ts';
 import { pilot, template, type Level, type Moment, type View } from './brain.ts';
-import { merchants } from './merchant.ts';
 
 const env = process.env;
 const SERVER = env.SERVER_URL ?? 'ws://localhost:8787';
@@ -186,4 +185,3 @@ function lobby() {
 
 log(`bots up: on call (${LEVEL}), commentator ${on('COMMENTATOR')}`);
 lobby();
-merchants(); // NPC skill merchants (MERCHANTS env), see merchant.ts

@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/shadcn/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/shadcn/dropdown-menu";
 import { Bell, ChevronDown, Gamepad2 } from "lucide-react";
-import { SignIn } from "@/components/signin";
 
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
 
@@ -86,7 +85,7 @@ export function Shell({ children }: { children: ReactNode }) {
                     <img src={art("avatar.png")} alt="" className="size-9 rounded-full" />
                     <span className="hidden min-w-0 max-w-36 text-left sm:block">
                       <span className="block truncate text-sm font-extrabold">{name}</span>
-                      <span className="block truncate text-xs font-bold text-muted">{a.demo ? "Demo mode" : "NEAR testnet"}</span>
+                      <span className="block truncate text-xs font-bold text-muted">{a.demo ? "Demo mode" : "Signed in"}</span>
                     </span>
                     <ChevronDown className="size-4" />
                   </Button>
@@ -104,7 +103,6 @@ export function Shell({ children }: { children: ReactNode }) {
       </header>
       <main className="mx-auto w-full max-w-7xl px-4 pb-24 pt-6">{children}</main>
       <Toaster />
-      <SignIn />
     </>
   );
 }
@@ -228,7 +226,7 @@ export function SkillRow({ s, h, href }: { s: Skill; h?: Point[]; href?: string 
       </span>
       {h && <span className="hidden w-24 shrink-0 sm:block"><Sparkline data={prices(h)} fill={false} className="h-8" /></span>}
       <span className="shrink-0 text-right">
-        <span className="block font-extrabold tabular-nums">{s.floor ?? s.last_price ? `${fmt(s.floor ?? s.last_price)} Ⓝ` : "—"}</span>
+        <span className="block font-extrabold tabular-nums">{s.floor ?? s.last_price ? `${fmt(s.floor ?? s.last_price)} SOL` : "—"}</span>
         {h && <Pct v={change24(h)} className="text-xs" />}
       </span>
     </Link>

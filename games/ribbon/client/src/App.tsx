@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { MARKET_URL, NETWORK, NearProvider, PLATFORM_ID, fmt, toYocto, useBalance, usePlatform } from '@xyz/platform';
+import { MARKET_URL, NETWORK, WalletProvider, PLATFORM_ID, fmt, toYocto, useBalance, usePlatform } from '@xyz/platform';
 import { BOOST_TICKS, CLOSE_AT, Sim, TICK_HZ, WIN_ROUNDS, input } from './sim.ts';
 import { bot } from './bot.ts';
 import { COLORS, NAMES, render } from './draw.ts';
@@ -20,7 +20,7 @@ interface Api {
   list: () => Promise<MatchView[]>;
   get: (id: number) => Promise<MatchView | null>;
   cancel: (id: number) => Promise<unknown>;
-  create: (stakeNear: string, bettable: boolean) => Promise<number>;
+  create: (stakeAmt: string, bettable: boolean) => Promise<number>;
   join: (id: number) => Promise<unknown>;
   claim: (id: number) => Promise<unknown>;
   sign: (id: number, nonceHex: string) => Promise<Auth>;
@@ -49,6 +49,7 @@ const demoApi: Api = {
   sign: async () => ({ publicKey: '', signature: '' }),
 };
 
+// TODO(solana): chain seam for ribbon; calls go through @xyz/platform stubs (throw "coming soon").
 function Live() {
   const p = usePlatform();
   const { balance } = useBalance();
@@ -67,14 +68,14 @@ function Live() {
     claim: (id) => p.call('claim', { match_id: id }),
     sign: async (id, nonceHex) => {
       const nonce = Uint8Array.from(nonceHex.match(/../g) ?? [], (h) => parseInt(h, 16));
-      const s = await p.w.signNEP413Message({ message: `ribbon:${id}`, recipient: PLATFORM_ID, nonce });
+      const s = await p.w.signMessage({ message: `ribbon:${id}`, recipient: PLATFORM_ID, nonce });
       return { publicKey: String(s.publicKey), signature: String(s.signature) };
     },
   };
   return <Screens api={api} />;
 }
 
-export const App = () => (DEMO ? <Screens api={demoApi} /> : <NearProvider config={{ network: NETWORK }}><Live /></NearProvider>);
+export const App = () => (DEMO ? <Screens api={demoApi} /> : <WalletProvider config={{ network: NETWORK }}><Live /></WalletProvider>);
 
 function Screens({ api }: { api: Api }) {
   const [sc, go] = useState<Screen>({ s: 'home' });
@@ -142,7 +143,7 @@ function Home({ api, go, create }: { api: Api; go: (s: Screen) => void; create?:
         </button>
         {/* brawler Title.tsx hub-counters: balance chip -> funds, wallet chip -> account, demo exit */}
         <div className="counters">
-          {me && <button className="chip ctr" onClick={() => setPop('funds')} title="Platform balance, deposit / withdraw"><img src="/ui/coin.webp" alt="" /><i>Balance</i>{api.balance === null ? '…' : `${fmt(api.balance)} NEAR`}</button>}
+          {me && <button className="chip ctr" onClick={() => setPop('funds')} title="Platform balance, deposit / withdraw"><img src="/ui/coin.webp" alt="" /><i>Balance</i>{api.balance === null ? '…' : `${fmt(api.balance)} SOL`}</button>}
           <button className="chip ctr wallet" onClick={() => (me ? setPop('account') : api.signIn())}><img src="/ui/icon-wallet.webp" alt="" />{me ? short(me) : 'Connect wallet'}</button>
           {DEMO && <a className="chip ctr demo-exit" href={location.pathname}>Demo mode · exit</a>}
         </div>
@@ -153,11 +154,11 @@ function Home({ api, go, create }: { api: Api; go: (s: Screen) => void; create?:
         <Modal title="New race" close={close}>
           <form className="create" onSubmit={(e) => { e.preventDefault(); run(async () => { setWaitId(await api.create(stake, bettable)); setPop('wait'); }); }}>
             <label className="field">Stake
-              <span className="stake"><input type="number" min="0" step="0.05" value={stake} autoFocus onChange={(e) => setStake(e.target.value)} /><b>NEAR</b></span>
+              <span className="stake"><input type="number" min="0" step="0.05" value={stake} autoFocus onChange={(e) => setStake(e.target.value)} /><b>SOL</b></span>
             </label>
             <div className="presets">{['0.1', '0.5', '1', '5'].map((v) => <button type="button" key={v} className={`preset${stake === v ? ' on' : ''}`} onClick={() => setStake(v)}>{v}</button>)}</div>
             <label className="toggle"><input type="checkbox" checked={bettable} onChange={(e) => setBettable(e.target.checked)} /><span>Bettable <i>spectators can bet on the market</i></span></label>
-            <p className="muted small">Winner takes the {fmt(2n * BigInt(toYocto(Number(stake) || 0)))} NEAR pot, minus a small fee. Balance: {fmt(api.balance)} NEAR · <a href={MARKET_URL} target="_blank" rel="noreferrer">deposit</a></p>
+            <p className="muted small">Winner takes the {fmt(2n * BigInt(toYocto(Number(stake) || 0)))} SOL pot, minus a small fee. Balance: {fmt(api.balance)} SOL · <a href={MARKET_URL} target="_blank" rel="noreferrer">deposit</a></p>
             <button className="btn-play wide" disabled={busy}><span className="tri" />{busy ? 'Creating…' : 'Start race'}</button>
           </form>
           {err && <p className="err">{err}</p>}
@@ -194,7 +195,7 @@ function Home({ api, go, create }: { api: Api; go: (s: Screen) => void; create?:
                 <li key={m.id}>
                   <span className="mid">{toCode(m.id)}</span>
                   <span className="who">{m.host}{m.guest && <><i> vs </i>{m.guest}</>}</span>
-                  <span className="money">{fmt(m.stake)} NEAR · pot {fmt(2n * BigInt(m.stake))}{m.bettable && <em className="badge">bettable</em>}</span>
+                  <span className="money">{fmt(m.stake)} SOL · pot {fmt(2n * BigInt(m.stake))}{m.bettable && <em className="badge">bettable</em>}</span>
                   <span className={`pill ${m.status}`}>{m.status}</span>
                   {mine ? <button className="btn-sm" onClick={() => (m.status === 'open' ? wait(m.id) : go({ s: 'play', id: m.id, watch: false }))}>{m.status === 'open' ? 'Room' : 'Play'}</button>
                     : m.status === 'open' ? <button className="btn-sm" disabled={busy || !me} onClick={() => run(async () => { await api.join(m.id); go({ s: 'play', id: m.id, watch: false }); })}>Join</button>
@@ -213,7 +214,7 @@ function Home({ api, go, create }: { api: Api; go: (s: Screen) => void; create?:
         <Modal title="Balance" close={close}>
           <div className="funds">
             <img src="/ui/coin.webp" alt="" />
-            <b>{fmt(api.balance)} <small>NEAR</small></b>
+            <b>{fmt(api.balance)} <small>SOL</small></b>
             <span className="muted small">Platform balance — stakes come out of it, winnings go back in. Shared by every game.</span>
           </div>
           <div className="acts"><a className="btn-play link-btn" href={MARKET_URL} target="_blank" rel="noreferrer">Deposit / withdraw ↗</a></div>
@@ -224,8 +225,8 @@ function Home({ api, go, create }: { api: Api; go: (s: Screen) => void; create?:
         <Modal title="Account" close={close}>
           <dl className="kv">
             <dt>Account</dt><dd>{me}</dd>
-            <dt>Balance</dt><dd>{fmt(api.balance)} NEAR · <button className="link" onClick={() => setPop('funds')}>manage</button></dd>
-            <dt>Network</dt><dd>NEAR {NETWORK}{DEMO && ' (demo)'}</dd>
+            <dt>Balance</dt><dd>{fmt(api.balance)} SOL · <button className="link" onClick={() => setPop('funds')}>manage</button></dd>
+            <dt>Network</dt><dd>{NETWORK}{DEMO && ' (demo)'}</dd>
           </dl>
           <div className="acts"><button className="btn-out" onClick={() => { api.signOut(); close(); }}>Disconnect</button></div>
         </Modal>
@@ -236,7 +237,7 @@ function Home({ api, go, create }: { api: Api; go: (s: Screen) => void; create?:
           <dl className="kv">
             <dt>Steer</dt><dd>Arrows / WASD · swipe</dd>
             <dt>Boost</dt><dd>Space · tap</dd>
-            <dt>Network</dt><dd>NEAR {NETWORK}{DEMO && ' (demo)'}</dd>
+            <dt>Network</dt><dd>{NETWORK}{DEMO && ' (demo)'}</dd>
             <dt>Wallet</dt><dd>{me ? <button className="link" onClick={() => setPop('account')}>{short(me)}</button> : <button className="link" onClick={api.signIn}>Connect wallet</button>}</dd>
           </dl>
         </Modal>
@@ -307,7 +308,7 @@ function Waiting({ api, id, go, close }: { api: Api; id: number; go: (s: Screen)
           <span className="ava" /><b>{m?.guest ?? 'Waiting for opponent'}</b><i>{joined ? `${NAMES[1]} · ready` : <>bot joins in <b className="secs">{left}s</b></>}</i>
         </div>
       </div>
-      {m && <p className="muted small center">Stake {fmt(m.stake)} NEAR · pot {fmt(2n * BigInt(m.stake))} NEAR{m.bettable && ' · bettable'}</p>}
+      {m && <p className="muted small center">Stake {fmt(m.stake)} SOL · pot {fmt(2n * BigInt(m.stake))} SOL{m.bettable && ' · bettable'}</p>}
       {joined ? <p className="go-banner">Opponent joined — get ready!</p> : (
         <div className="acts">
           <button className="btn-out" disabled={!m || m.status !== 'open'} onClick={async () => { try { done.current = true; await api.cancel(id); close(); } catch (e) { done.current = false; setErr(String(e)); } }}>Cancel race</button>
@@ -437,7 +438,7 @@ function Play({ api, id, watch, practice, go }: { api: Api; id: number; watch: b
       <div className="duel-bg" aria-hidden="true" />
       <header className="duel-top">
         <button className="logo" onClick={() => go({ s: 'home' })} aria-label="Ribbon Rush home"><span>Ribbon</span><span>Rush</span></button>
-        <span className="chip ctr wallet">{api.account ? <>{short(api.account)} · {fmt(api.balance)} NEAR</> : 'Spectator'}{DEMO && <em className="demo">demo</em>}</span>
+        <span className="chip ctr wallet">{api.account ? <>{short(api.account)} · {fmt(api.balance)} SOL</> : 'Spectator'}{DEMO && <em className="demo">demo</em>}</span>
       </header>
       <div className="frame">
         <div className="frame-top">

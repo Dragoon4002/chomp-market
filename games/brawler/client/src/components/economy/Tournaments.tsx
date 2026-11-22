@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { DEMO } from '@/lib/demo.ts';
-import { fmt, toYocto, useArena, useWallet, type TournamentView } from '@/lib/near.ts';
+import { fmt, UNIT, toYocto, useArena, useWallet, type TournamentView } from '@/lib/chain.ts';
 import { useAct, useLoad } from '@/hooks/async.ts';
 import { Ico } from '@/components/ui.tsx';
 import { go } from '@/lib/nav.ts';
@@ -12,7 +12,7 @@ function TCard({ t }: { t: TournamentView }) {
     <a className="tile" href={`/tournament/${t.id}`}>
       <div className="tile-head"><h3>Tournament #{t.id}</h3><span className={`chip row-ico ${t.status === 'live' ? 'gold' : ''}`}><Ico n={STATUS_ICON[t.status]} />{t.status}</span></div>
       <span className="tile-meta row-ico"><Ico n="icon-monster" />{t.entrants.length} / {t.size} entered</span>
-      <span className="tile-meta row-ico"><Ico n="coin" />Entry {fmt(t.entry_fee)} NEAR, pot {fmt(t.pot)} NEAR</span>
+      <span className="tile-meta row-ico"><Ico n="coin" />Entry {fmt(t.entry_fee)} {UNIT}, pot {fmt(t.pot)} {UNIT}</span>
       {t.bettable && <span className="tile-meta row-ico"><Ico n="icon-bet" />Bets open</span>}
     </a>
   );
@@ -27,7 +27,7 @@ function CreateTournament({ done }: { done: (id: number) => void }) {
       <h3 className="row-ico"><Ico n="trophy" />Create a tournament</h3>
       <div className="row">
         <label className="row">Players <select value={size} onChange={(e) => setSize(+e.target.value)}><option value={4}>4</option><option value={8}>8</option></select></label>
-        <label className="row">Entry fee <input type="number" min="0" step="0.05" value={fee} onChange={(e) => setFee(e.target.value)} style={{ width: 110 }} aria-label="Entry fee in NEAR" /> NEAR</label>
+        <label className="row">Entry fee <input type="number" min="0" step="0.05" value={fee} onChange={(e) => setFee(e.target.value)} style={{ width: 110 }} aria-label={`Entry fee in ${UNIT}`} /> {UNIT}</label>
       </div>
       <label className="toggle"><input type="checkbox" checked={bet} onChange={(e) => setBet(e.target.checked)} /> Let spectators bet on matches</label>
       <button className="btn" disabled={busy || !(Number(fee) >= 0)} onClick={() => run(async () => done(await arena.createTournament(size, toYocto(fee || '0'), bet)), 'Created.')}><span><Ico n="icon-check" />Create</span></button>

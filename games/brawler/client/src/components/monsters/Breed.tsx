@@ -1,7 +1,7 @@
 import { Fragment, useState } from 'react';
 import { STAT_KEYS } from '@/lib/genes.ts';
 import { DEMO } from '@/lib/demo.ts';
-import { fmt, useWallet } from '@/lib/near.ts';
+import { fmt, UNIT, useWallet } from '@/lib/chain.ts';
 import { useMonsters, type NftMonster } from '@/lib/nft.ts';
 import { useAct, useLoad } from '@/hooks/async.ts';
 import { Ico, MonsterCard, Portrait } from '@/components/ui.tsx';
@@ -40,7 +40,7 @@ export function Breed() {
             {STAT_KEYS.map((k) => <Fragment key={k}><dt>{k}</dt><dd>{Math.min(a.dna[k], b.dna[k])} to {Math.max(a.dna[k], b.dna[k])}</dd></Fragment>)}
             <dt>Horns</dt><dd>{GENE_NAMES.horn[a.dna.horn]} or {GENE_NAMES.horn[b.dna.horn]}</dd>
             <dt>Tail</dt><dd>{GENE_NAMES.tail[a.dna.tail]} or {GENE_NAMES.tail[b.dna.tail]}</dd>
-            <dt>Fee</dt><dd className="row-ico"><Ico n="coin" />{cfg ? `${fmt(cfg.breed_fee)} NEAR + storage` : '…'}</dd>
+            <dt>Fee</dt><dd className="row-ico"><Ico n="coin" />{cfg ? `${fmt(cfg.breed_fee)} ${UNIT} + storage` : '…'}</dd>
           </dl>
           <div className="row" style={{ marginTop: 16 }}><button className="btn big" disabled={act.busy} onClick={hatch}><span><Ico n="egg-teal" />{act.busy ? 'Hatching…' : 'Hatch egg'}</span></button></div>
         </section>

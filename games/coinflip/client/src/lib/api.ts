@@ -57,7 +57,7 @@ async function settle(id: number) {
 }
 // in-play showcase: someone vs house bot, settles when first watched, then a fresh one appears
 const showcase = async () => {
-  const r = await open('whale.near', 0, '1500000000000000000000000');
+  const r = await open('whale.sol', 0, '1500000000000000000000000');
   rooms.set(r.matchId, { ...r, guest: 'house-bot', bot: true, status: 'live' });
 };
 const watched = new Set<number>();
@@ -69,7 +69,7 @@ const post = (id: number, from: string, text: string) => {
 };
 const seeded = Promise.all([
   open('alice.testnet', 0, '500000000000000000000000'),
-  open('degen.near', 1, '2000000000000000000000000'),
+  open('degen.sol', 1, '2000000000000000000000000'),
   open('free-roller.testnet', 1, '0'),
   showcase(),
 ]);
@@ -122,6 +122,7 @@ const merge = (m: MatchView, s?: ServerRoom): Room => ({
   winner: m.winner == null ? undefined : (m.winner as Side),
 });
 
+// TODO(solana): chain seam for coinflip; calls go through @xyz/platform stubs (throw "coming soon").
 export function useApi(): Api {
   const p = usePlatform();
   const me = p.w.signedAccountId || null;
@@ -130,7 +131,7 @@ export function useApi(): Api {
     // NEP-413 auth, nonce = sha256(message)
     const auth = async (message: string) => {
       const nonce = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(message)));
-      const s = await p.w.signNEP413Message({ message, recipient: PLATFORM_ID, nonce });
+      const s = await p.w.signMessage({ message, recipient: PLATFORM_ID, nonce });
       return { publicKey: String(s.publicKey), signature: String(s.signature) };
     };
     const flipped = new Set<number>();

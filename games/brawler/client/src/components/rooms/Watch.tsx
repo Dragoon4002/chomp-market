@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { lookOf } from '@/lib/genes.ts';
 import { DEMO, DEMO_ROOMS, demoChat, demoSettle } from '@/lib/demo.ts';
-import { fmt, toYocto, useArena, type Book, type FillView, type Limits, type MatchView, type OrderView, type PositionView } from '@/lib/near.ts';
+import { fmt, UNIT as COIN, toYocto, useArena, type Book, type FillView, type Limits, type MatchView, type OrderView, type PositionView } from '@/lib/chain.ts';
 import { UNIT, cost, sweep } from '@/lib/market.ts';
 import { startBotFight, startSpectate, type ChatLine, type RoomState } from '@/lib/session.ts';
 import { errText, signed } from '@/lib/format.ts';
@@ -112,10 +112,10 @@ export function Watch({ code }: { code: string }) {
   // mirrors contract `place_order` checks so the wallet opens only for a landable order
   const place = async (s: number, price: number, qty: number) => {
     if (!arena.account) { setMsg('Connect your wallet, then trade.'); return arena.signIn(); }
-    if (!budget) return setMsg('Enter an amount in NEAR, like 0.5.');
+    if (!budget) return setMsg(`Enter an amount in ${COIN}, like 0.5.`);
     if (!(price >= 1 && price <= 9999)) return setMsg('Price must be between 0.01% and 99.99%.');
-    if (qty < 1) return setMsg(`Too little for one share at ${pc(price)} (${fmt(cost(price, 1))} NEAR).`);
-    if (limits && cost(price, qty) > BigInt(limits.max_bet)) return setMsg(`Maximum order is ${fmt(limits.max_bet)} NEAR.`);
+    if (qty < 1) return setMsg(`Too little for one share at ${pc(price)} (${fmt(cost(price, 1))} ${COIN}).`);
+    if (limits && cost(price, qty) > BigInt(limits.max_bet)) return setMsg(`Maximum order is ${fmt(limits.max_bet)} ${COIN}.`);
     try {
       setMsg(`Confirm in your wallet: ${qty} ${name(s)} shares at up to ${pc(price)}.`);
       const r = await arena.placeOrder(matchId!, s, price, qty);
@@ -165,7 +165,7 @@ export function Watch({ code }: { code: string }) {
         {[0, 1].map((s) => pops.some((f) => f.side === s) && ( // new fills pop up over the fight, on the backed fighter's side
           <ul key={s} className={`bet-pops ${s ? 'right' : 'left'}`} aria-live="polite" aria-label="New bets">
             {pops.filter((f) => f.side === s).map((f) => (
-              <li key={f.id} className="bet-pop" style={tint(players[f.side])}><b>{who(f.taker)}</b> backed {name(f.side)} <b>{fmt(cost(f.price_bps, f.qty))} NEAR</b> @ {pc(f.price_bps)}</li>
+              <li key={f.id} className="bet-pop" style={tint(players[f.side])}><b>{who(f.taker)}</b> backed {name(f.side)} <b>{fmt(cost(f.price_bps, f.qty))} {COIN}</b> @ {pc(f.price_bps)}</li>
             ))}
           </ul>
         ))}
@@ -176,7 +176,7 @@ export function Watch({ code }: { code: string }) {
         {note ? <section className="slab bet"><h3 className="row-ico"><Ico n="icon-bet" />Betting</h3><p className="note">{note}</p></section> : spec && (
           <section className="slab bet" aria-label="Back a fighter">
             <h3 className="row-ico"><Ico n="icon-bet" />Back a fighter</h3>
-            <label className="bet-amt"><span>Amount</span><input type="number" min="0.01" step="0.01" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} disabled={!canTrade} /><b>NEAR</b></label>
+            <label className="bet-amt"><span>Amount</span><input type="number" min="0.01" step="0.01" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} disabled={!canTrade} /><b>{COIN}</b></label>
             {!adv && <>
               <div className="side-pick">
                 {[0, 1].map((s) => (
@@ -187,7 +187,7 @@ export function Watch({ code }: { code: string }) {
               </div>
               <p className="note bet-quote" aria-live="polite">
                 {!canTrade ? (over || !open ? 'Betting closed.' : 'Betting opens with the room.')
-                  : quick[side] ?? quick[1 - side] ? [0, 1].filter((s) => quick[s]).map((s) => `${name(s)}: ${quick[s]!.qty} shares, pays ${fmt(win(quick[s]!.qty))} NEAR if they win`).join(' · ')
+                  : quick[side] ?? quick[1 - side] ? [0, 1].filter((s) => quick[s]).map((s) => `${name(s)}: ${quick[s]!.qty} shares, pays ${fmt(win(quick[s]!.qty))} ${COIN} if they win`).join(' · ')
                   : 'No one is offering yet — set your own price below.'}
               </p>
             </>}
@@ -203,7 +203,7 @@ export function Watch({ code }: { code: string }) {
                 ))}
               </fieldset>
               <label className="bet-amt"><span>Price</span><input type="number" min="0.01" max="99.99" step="1" inputMode="decimal" value={pricePct} onChange={(e) => setPricePct(e.target.value)} disabled={!canTrade} /><b>%</b></label>
-              <p className="note">{advQty} shares · pays {fmt(win(advQty))} NEAR if {name(side)} wins. Unmatched shares wait on the book until someone takes them or you cancel.</p>
+              <p className="note">{advQty} shares · pays {fmt(win(advQty))} {COIN} if {name(side)} wins. Unmatched shares wait on the book until someone takes them or you cancel.</p>
               <button type="button" className="btn" disabled={!canTrade || advQty < 1} onClick={() => place(side, advPrice, advQty)}><span><Ico n="coin" />Place order</span></button>
             </>}
             {msg && <p className="note" role="status">{msg}</p>}
@@ -216,10 +216,10 @@ export function Watch({ code }: { code: string }) {
                 </div>
               ))}
             </div>
-            <p className="note">{fmt(match?.collateral)} NEAR matched · {match?.kos ?? 0} KO{match?.kos === 1 ? '' : 's'} · each winning share pays 0.01 NEAR.</p>
+            <p className="note">{fmt(match?.collateral)} {COIN} matched · {match?.kos ?? 0} KO{match?.kos === 1 ? '' : 's'} · each winning share pays 0.01 {COIN}.</p>
             {over && <b>{over.winner === null ? 'Match void, everyone gets back what they paid.' : `${name(over.winner)} wins${over.reason === 'ko' ? '' : ` by ${over.reason}`}.`}</b>}
             {over && match?.status === 'live' && <p className="note">Waiting for the result to post on-chain…</p>}
-            {due > 0n && <button className="btn big" onClick={() => act(() => arena.claim(matchId!), 'Added to your balance.')}><span><Ico n="icon-claim" />Claim {fmt(due)} NEAR</span></button>}
+            {due > 0n && <button className="btn big" onClick={() => act(() => arena.claim(matchId!), 'Added to your balance.')}><span><Ico n="icon-claim" />Claim {fmt(due)} {COIN}</span></button>}
             {DEMO && !over && ( // demo bots rarely finish a fight; end it here to see settlement and payouts
               <span className="row demo-end">End fight:
                 {[0, 1, null].map((w) => <button key={String(w)} className="chip" onClick={() => setOver({ winner: w, reason: 'ko' })}>{w === null ? 'Void' : `${name(w)} wins`}</button>)}
@@ -240,7 +240,7 @@ export function Watch({ code }: { code: string }) {
                     {settledW === null ? <span>pays {fmt(win(pos.shares[s]))}</span> : settledW === s ? <b className="pnl-up">Won {fmt(win(pos.shares[s]))}</b> : <b className="pnl-down">Lost</b>}
                   </div>
                 ))}
-                {pos && settledW !== null && <span>Result: <b className={win(pos.shares[settledW]) >= paid ? 'pnl-up' : 'pnl-down'}>{signed(win(pos.shares[settledW]) - paid)} NEAR</b></span>}
+                {pos && settledW !== null && <span>Result: <b className={win(pos.shares[settledW]) >= paid ? 'pnl-up' : 'pnl-down'}>{signed(win(pos.shares[settledW]) - paid)} {COIN}</b></span>}
               </div>
             )}
           </section>

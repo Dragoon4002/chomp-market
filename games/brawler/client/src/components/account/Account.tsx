@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
-import { yoctoToNear } from 'near-api-js';
 import { getAudio, setAudio } from '@/lib/audio.ts';
-import { fmt, useUnifiedBalance, useWallet } from '@/lib/near.ts';
+import { fmt, UNIT, useUnifiedBalance, useWallet } from '@/lib/chain.ts';
 import { MARKET_URL, useMonsters } from '@/lib/nft.ts';
 import { useLoad } from '@/hooks/async.ts';
 import { monsters } from '@/lib/store.ts';
@@ -17,7 +16,7 @@ export function Account() {
   const [bal, setBal] = useState<string>('');
   useEffect(() => {
     if (!signedAccountId) return setBal('');
-    getBalance(signedAccountId).then((y: bigint) => setBal(Number(yoctoToNear(y)).toFixed(3))).catch(() => setBal('unavailable'));
+    getBalance(signedAccountId).then((y: bigint) => setBal(fmt(y))).catch(() => setBal('unavailable'));
   }, [signedAccountId, getBalance]);
   const { fights, loading: fl } = useFights(signedAccountId, true);
   const api = useMonsters();
@@ -26,14 +25,14 @@ export function Account() {
   useEffect(() => { if (signedAccountId) api.owed().then(setOwed).catch(() => {}); }, [signedAccountId]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <>
-      <div><h1 className="row-ico"><Ico n="icon-wallet" className="ico h" />Account</h1><p className="sub">Your NEAR account owns your monsters. Network: {network}.</p></div>
+      <div><h1 className="row-ico"><Ico n="icon-wallet" className="ico h" />Account</h1><p className="sub">Your wallet owns your monsters. Network: {network}.</p></div>
       <div className="split">
         <section className="slab" style={{ display: 'grid', gap: 14 }}>
           {loading ? <p>Checking wallet…</p> : signedAccountId ? (
             <>
               <h2 title={signedAccountId}>{short(signedAccountId)}</h2>
-              <dl className="kv"><dt>Game balance</dt><dd className="row-ico"><Ico n="coin-stack" />{balance === null ? 'loading…' : `${fmt(balance)} NEAR`} <button type="button" className="link" onClick={() => setFunds(true)}>Deposit / withdraw</button></dd><dt>Wallet</dt><dd className="row-ico"><Ico n="coin" />{bal ? `${bal} NEAR` : 'loading…'}</dd><dt>Monsters</dt><dd className="row-ico"><Ico n="icon-monster" />{monsters().length}</dd></dl>
-              {owed !== '0' && <button className="btn" onClick={() => api.withdrawOwed().then(() => setOwed('0'))}><span><Ico n="coin" />Withdraw {fmt(owed)} NEAR from failed payouts</span></button>}
+              <dl className="kv"><dt>Game balance</dt><dd className="row-ico"><Ico n="coin-stack" />{balance === null ? 'loading…' : `${fmt(balance)} ${UNIT}`} <button type="button" className="link" onClick={() => setFunds(true)}>Deposit / withdraw</button></dd><dt>Wallet</dt><dd className="row-ico"><Ico n="coin" />{bal ? `${bal} ${UNIT}` : 'loading…'}</dd><dt>Monsters</dt><dd className="row-ico"><Ico n="icon-monster" />{monsters().length}</dd></dl>
+              {owed !== '0' && <button className="btn" onClick={() => api.withdrawOwed().then(() => setOwed('0'))}><span><Ico n="coin" />Withdraw {fmt(owed)} {UNIT} from failed payouts</span></button>}
               <button className="btn ghost" onClick={() => signOut()}><span><Ico n="icon-close" />Disconnect</span></button>
             </>
           ) : (

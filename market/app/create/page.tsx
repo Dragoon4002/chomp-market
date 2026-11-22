@@ -77,7 +77,7 @@ export default function Create() {
             }}>
               <Field label="Skill"><select name="skill" className={inputCls}>{d.skills.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Price (Ⓝ)"><input name="price" type="number" min="0.001" step="0.001" required className={inputCls} placeholder="0.5" /></Field>
+                <Field label="Price (SOL)"><input name="price" type="number" min="0.001" step="0.001" required className={inputCls} placeholder="0.5" /></Field>
                 <Field label="Per wallet"><input name="per_wallet" type="number" min="1" className={inputCls} placeholder="2" /></Field>
                 <Field label="Starts"><input name="start" type="datetime-local" className={inputCls} /></Field>
                 <Field label="Ends"><input name="end" type="datetime-local" className={inputCls} /></Field>

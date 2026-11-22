@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Monster } from '@/lib/genes.ts';
-import { useWallet } from '@/lib/near.ts';
+import { useWallet } from '@/lib/chain.ts';
 import { useMonsters, type NftMonster } from '@/lib/nft.ts';
 import { monsters } from '@/lib/store.ts';
 import { useLoad } from '@/hooks/async.ts';

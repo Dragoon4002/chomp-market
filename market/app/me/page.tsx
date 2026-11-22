@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { fmt, KIND_LABEL, near, toYocto, useAssets, type Holding, type Skill } from "@/lib/assets";
+import { fmt, KIND_LABEL, amount, toYocto, useAssets, type Holding, type Skill } from "@/lib/assets";
 import { act, Btn, cx, Empty, inputCls, Loading, MonsterArt, Panel, RARITY_TEXT, SkillArt, useLoad } from "@/components/ui";
 
 function HoldingRow({ h, s, onDone }: { h: Holding; s: Skill; onDone: () => void }) {
@@ -27,7 +27,7 @@ function HoldingRow({ h, s, onDone }: { h: Holding; s: Skill; onDone: () => void
       {open && (
         <form className="mt-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); act(() => a.listSkill(s.id, Number(qty), toYocto(price)), "Listed.", () => { setOpen(false); onDone(); }); }}>
           <input className={cx(inputCls, "w-20")} type="number" min={1} max={Number(h.free)} value={qty} onChange={(e) => setQty(e.target.value)} aria-label="Quantity" />
-          <input className={cx(inputCls, "flex-1")} type="number" min="0.001" step="0.001" required placeholder={`Each, Ⓝ (floor ${fmt(s.floor)})`} value={price} onChange={(e) => setPrice(e.target.value)} aria-label="Price each" />
+          <input className={cx(inputCls, "flex-1")} type="number" min="0.001" step="0.001" required placeholder={`Each, SOL (floor ${fmt(s.floor)})`} value={price} onChange={(e) => setPrice(e.target.value)} aria-label="Price each" />
           <Btn small className="h-11">List</Btn>
         </form>
       )}
@@ -55,8 +55,8 @@ export default function Me() {
           <p className="mt-1 font-bold text-muted">{total} skills · {d.monsters.length} monsters · {d.listings.length + d.monsters.filter((m) => m.price).length} listings</p>
         </div>
         <Panel className="flex w-full items-center gap-4 p-4 sm:w-auto">
-          <div><p className="text-xs font-extrabold uppercase text-muted">Proceeds owed</p><p className="font-display text-3xl">{fmt(d.owed)} Ⓝ</p></div>
-          <Btn tone="gold" className="ml-auto" disabled={d.owed === "0"} onClick={() => act(a.withdrawOwed, `Withdrew ${fmt(d.owed)} NEAR.`, reload)}>Withdraw</Btn>
+          <div><p className="text-xs font-extrabold uppercase text-muted">Proceeds owed</p><p className="font-display text-3xl">{fmt(d.owed)} SOL</p></div>
+          <Btn tone="gold" className="ml-auto" disabled={d.owed === "0"} onClick={() => act(a.withdrawOwed, `Withdrew ${fmt(d.owed)} SOL.`, reload)}>Withdraw</Btn>
         </Panel>
       </div>
 
@@ -74,14 +74,14 @@ export default function Me() {
                 {d.listings.map((l) => { const s = skill(l.skill); return (
                   <div key={l.skill} className="flex items-center gap-3 rounded-2xl p-2.5">
                     <SkillArt kind={s.kind} rarity={s.rarity} mag={s.mag} size={40} />
-                    <span className="min-w-0 flex-1"><span className="block truncate font-display text-lg">{s.name}</span><span className="text-xs font-extrabold text-muted">{l.qty} × {fmt(l.price_each)} Ⓝ</span></span>
+                    <span className="min-w-0 flex-1"><span className="block truncate font-display text-lg">{s.name}</span><span className="text-xs font-extrabold text-muted">{l.qty} × {fmt(l.price_each)} SOL</span></span>
                     <Btn small tone="ghost" onClick={() => act(() => a.cancelSkillListing(l.skill), "Listing cancelled.", reload)}>Cancel</Btn>
                   </div>
                 ); })}
                 {d.monsters.filter((m) => m.price).map((m) => (
                   <div key={m.token_id} className="flex items-center gap-3 rounded-2xl p-2.5">
                     <MonsterArt dna={m.dna} size={40} />
-                    <span className="min-w-0 flex-1"><span className="block truncate font-display text-lg">{m.name}</span><span className="text-xs font-extrabold text-muted">{fmt(m.price)} Ⓝ</span></span>
+                    <span className="min-w-0 flex-1"><span className="block truncate font-display text-lg">{m.name}</span><span className="text-xs font-extrabold text-muted">{fmt(m.price)} SOL</span></span>
                     <Btn small tone="ghost" onClick={() => act(() => a.delistMonster(m.token_id), "Delisted.", reload)}>Cancel</Btn>
                   </div>
                 ))}
@@ -95,7 +95,7 @@ export default function Me() {
                 <MonsterArt dna={m.dna} size={52} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-display text-xl leading-tight">{m.name} <span className="text-muted">#{m.token_id}</span></span>
-                  <span className="text-xs font-extrabold text-muted">{m.record.w}W {m.record.l}L · {m.skills.length}/3 skills{m.price ? ` · listed ${near(m.price).toFixed(2)} Ⓝ` : ""}</span>
+                  <span className="text-xs font-extrabold text-muted">{m.record.w}W {m.record.l}L · {m.skills.length}/3 skills{m.price ? ` · listed ${amount(m.price).toFixed(2)} SOL` : ""}</span>
                 </span>
                 <span className="flex -space-x-2">{m.skills.map((x, i) => <SkillArt key={i} kind={x.kind} rarity={skill(x.id)?.rarity ?? "Common"} size={30} />)}</span>
               </Link>

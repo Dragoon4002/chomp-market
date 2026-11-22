@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { DEMO } from '@/lib/demo.ts';
-import { fmt, useUnifiedBalance, useWallet } from '@/lib/near.ts';
+import { fmt, UNIT, useUnifiedBalance, useWallet } from '@/lib/chain.ts';
 import { monsters } from '@/lib/store.ts';
 import { Ico, Logo, TitleArt } from '@/components/ui.tsx';
 import { FundsDialog } from '@/components/account/Funds.tsx';
@@ -34,7 +34,7 @@ export function Title({ page, children }: { page?: string; children?: React.Reac
         <div className="hub-counters">
           <span className="hub-count" title="Total wins"><Ico n="trophy" /><i>Wins</i>{wins}</span>
           <span className="hub-count" title="Total knockouts"><Ico n="ko" /><i>KOs</i>{kos}</span>
-          {signedAccountId && <button type="button" className="hub-count" onClick={() => setPop('funds')} title="Unified balance, deposit / withdraw"><Ico n="coin" /><i>Balance</i>{balance === null ? '…' : `${fmt(balance)} NEAR`}</button>}
+          {signedAccountId && <button type="button" className="hub-count" onClick={() => setPop('funds')} title="Unified balance, deposit / withdraw"><Ico n="coin" /><i>Balance</i>{balance === null ? '…' : `${fmt(balance)} ${UNIT}`}</button>}
           <a className="hub-count wallet" href="/account"><Ico n="icon-wallet" />{signedAccountId ? short(signedAccountId) : 'Connect wallet'}</a>
           {DEMO && <a className="hub-count demo" href="/" target="_self">Demo mode · exit</a>}
         </div>

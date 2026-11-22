@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Monster } from '@/lib/genes.ts';
 import { DEMO } from '@/lib/demo.ts';
-import { useWallet } from '@/lib/near.ts';
+import { useWallet } from '@/lib/chain.ts';
 import { useMonsters } from '@/lib/nft.ts';
 import { useAct, useLoad } from '@/hooks/async.ts';
 import { Ico, MonsterCard } from '@/components/ui.tsx';

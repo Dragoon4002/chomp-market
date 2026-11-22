@@ -5,8 +5,6 @@
   "type": "module",
   "exports": "./index.ts",
   "peerDependencies": {
-    "near-api-js": "^7.2.0",
-    "near-connect-hooks": "^1.1.6",
     "react": "^19.3.1"
   }
 }

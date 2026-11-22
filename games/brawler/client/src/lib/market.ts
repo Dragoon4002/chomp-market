@@ -1,7 +1,7 @@
 // Mirror of the contract's order book (contracts/platform): math, rounding and error messages.
 
-export const ONE = 10n ** 24n; // 1 NEAR in yocto
-export const UNIT = ONE / 100n; // a winning share pays 0.01 NEAR
+export const ONE = 10n ** 24n; // 1 coin in base units (24 dp)
+export const UNIT = ONE / 100n; // a winning share pays 0.01 coin
 export const PER_BPS = UNIT / 10_000n; // cost of 1 share at 1 bps
 const BPS = 10_000n;
 export const MAX_FILLS = 20;
@@ -11,7 +11,7 @@ export interface Order { id: number; who: string; side: number; price_bps: numbe
 export interface Fill { id: number; taker: string; maker: string; side: number; price_bps: number; qty: number; ms: number }
 export interface Pos { shares: [number, number]; paid: [bigint, bigint]; open: bigint; claimed: boolean }
 export type Kind = 'order' | 'cancel' | 'payout' | 'refund' | 'fee';
-export interface Entry { who: string; kind: Kind; near: bigint }
+export interface Entry { who: string; kind: Kind; amt: bigint }
 export type Level = [number, number]; // [price_bps, qty]
 
 export const cost = (price: number, qty: number) => BigInt(price) * BigInt(qty) * PER_BPS;
@@ -79,7 +79,7 @@ export class Market {
       book.splice(at < 0 ? book.length : at, 0, { id, who, side, price_bps: price, qty: rem, filled: qty - rem, ms });
       me.open += cost(price, rem); paid += cost(price, rem);
     }
-    this.ledger.push({ who, kind: 'order', near: paid });
+    this.ledger.push({ who, kind: 'order', amt: paid });
     return { id, filled: qty - rem, cost: paid };
   }
 
@@ -91,7 +91,7 @@ export class Market {
       const back = cost(book[i].price_bps, book[i].qty);
       book.splice(i, 1);
       this.pos(who).open -= back;
-      this.ledger.push({ who, kind: 'cancel', near: back });
+      this.ledger.push({ who, kind: 'cancel', amt: back });
       return back;
     }
     throw new Error('No such order');
@@ -131,14 +131,14 @@ export class Market {
     const [amt, fee] = this.split(who);
     if (amt <= 0n) throw new Error('Nothing to claim');
     this.positions.get(who)!.claimed = true;
-    this.ledger.push({ who, kind: this.status === 'refund' ? 'refund' : 'payout', near: amt });
-    if (fee) this.ledger.push({ who: 'house', kind: 'fee', near: fee });
+    this.ledger.push({ who, kind: this.status === 'refund' ? 'refund' : 'payout', amt: amt });
+    if (fee) this.ledger.push({ who: 'house', kind: 'fee', amt: fee });
     return amt;
   }
 
   /** Money in (orders - cancels) vs out (payouts + refunds + fees). Exact: dust must be 0 once all claimed. */
   audit() {
-    const sum = (k: Kind) => this.ledger.filter((e) => e.kind === k).reduce((s, e) => s + e.near, 0n);
+    const sum = (k: Kind) => this.ledger.filter((e) => e.kind === k).reduce((s, e) => s + e.amt, 0n);
     const inn = sum('order') - sum('cancel'), payouts = sum('payout') + sum('refund'), fees = sum('fee');
     return { in: inn, payouts, fees, out: payouts + fees, dust: inn - payouts - fees };
   }

@@ -13,15 +13,15 @@ SIZE, FRAMES = 256, 24
 R, T = 1.0, 0.1  # radius, half-thickness (diameter:thickness = 10:1)
 RELIEF = 0.035
 
-# NEAR "N" mark, 90x90 viewBox, y down.
-NEAR_PATH = ("M72.2 4.6L53.4 32.5c-1.3 1.9 1.2 4.2 3 2.6L74.9 19c.5-.4 1.2-.1 1.2.6v50.3c0 .7-.9 1-1.3.5"
+# Old chain-brand "N" mark, 90x90 viewBox, y down. TODO(solana): swap for the new logo + re-render.
+LOGO_PATH = ("M72.2 4.6L53.4 32.5c-1.3 1.9 1.2 4.2 3 2.6L74.9 19c.5-.4 1.2-.1 1.2.6v50.3c0 .7-.9 1-1.3.5"
              "l-56-67C17 1.2 14.4 0 11.5 0h-2C4.3 0 0 4.3 0 9.6v70.8C0 85.7 4.3 90 9.6 90c3.3 0 6.4-1.7 8.2-4.6"
              "l18.8-27.9c1.3-1.9-1.2-4.2-3-2.6l-18.5 16c-.5.4-1.2.1-1.2-.6V20.1c0-.7.9-1 1.3-.5l56 67"
              "c1.8 2.2 4.5 3.4 7.3 3.4h2c5.3 0 9.6-4.3 9.6-9.6V9.6c0-5.3-4.3-9.6-9.6-9.6-3.4 0-6.5 1.7-8.3 4.6z")
 
 
 def parse_path(d, steps=6):
-    # ponytail: handles only the commands NEAR_PATH uses (M L l H h V v C c z)
+    # ponytail: handles only the commands LOGO_PATH uses (M L l H h V v C c z)
     toks = re.findall(r"[A-Za-z]|-?\d*\.?\d+", d)
     pts, i, cmd, x, y = [], 0, None, 0.0, 0.0
     while i < len(toks):
@@ -131,11 +131,11 @@ def build():
         bm = bmesh.new(); ring(bm, 0.74, 0.77, min(z0, z1), max(z0, z1))
         parts.append(mesh_obj("inner", bm, polish, 0.006))
 
-    # HEADS (+Z): NEAR N, 90 units -> 0.92 wide, centred, y flipped (SVG y-down)
+    # HEADS (+Z): N logo, 90 units -> 0.92 wide, centred, y flipped (SVG y-down)
     s = 0.92 / 90
-    logo = ccw([((x - 45) * s, (45 - y) * s) for x, y in parse_path(NEAR_PATH)])
+    logo = ccw([((x - 45) * s, (45 - y) * s) for x, y in parse_path(LOGO_PATH)])
     bm = bmesh.new(); prism(bm, logo, T - 0.005, T + RELIEF)
-    parts.append(mesh_obj("near", bm, polish, 0.014))
+    parts.append(mesh_obj("logo", bm, polish, 0.014))
 
     # TAILS (-Z): 8-point star + ring of 32 radial bars + dot ring
     z0, z1 = -T - RELIEF, -T + 0.005
