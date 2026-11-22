@@ -10,7 +10,7 @@ use axum::response::Response;
 use base64::{Engine, engine::general_purpose::STANDARD as B64};
 use futures_util::{SinkExt, StreamExt};
 use game::{COUNTDOWN_MS, DT_MS, DURATION_MS, GRACE_MS, Sim, rank, verdict};
-use near_svc::Near;
+use chain::Chain;
 use serde_json::{Value, json};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
@@ -127,19 +127,19 @@ impl Room {
 
 pub struct App {
     rooms: Mutex<HashMap<String, Room>>,
-    near: Arc<Near>,
+    chain: Arc<Chain>,
 }
 
 impl App {
-    pub fn new(near: Arc<Near>) -> Arc<Self> {
+    pub fn new(chain: Arc<Chain>) -> Arc<Self> {
         Arc::new(App {
             rooms: Mutex::default(),
-            near,
+            chain,
         })
     }
 
     fn on_chain(&self) -> bool {
-        !self.near.contract.is_empty()
+        !self.chain.contract.is_empty()
     }
 
     fn tick(&self) {
@@ -153,11 +153,7 @@ impl App {
                     "hp": [r.sims[0].hp, r.sims[1].hp], "wpm": [r.sims[0].wpm(), r.sims[1].wpm()],
                 });
                 r.send_views("over", Some(("result", res)));
-                if let Some(id) = r.match_id {
-                    let args =
-                        json!({ "match_id": id, "winner": winner, "kos": null, "tape_hash": null });
-                    self.near.call(id, "report_result", args, 100);
-                }
+                // TODO(solana): post {match_id, winner} on-chain for chain matches (was report_result).
                 ended.push(code.clone());
             } else if r.phase != "wait" || std::mem::take(&mut r.dirty) {
                 r.send_views("state", None);
@@ -174,14 +170,14 @@ impl App {
 
     async fn get_match(&self, id: u64) -> Option<Value> {
         let m: Value = self
-            .near
-            .view(&self.near.contract, "get_match", json!({ "match_id": id }))
+            .chain
+            .view(&self.chain.contract, "get_match", json!({ "match_id": id }))
             .await?;
         (m["game"] == GAME).then_some(m)
     }
 
     async fn authed(&self, m: &Value, account: &str, id: u64, nonce: [u8; 32]) -> bool {
-        self.near
+        self.chain
             .verify_auth(&m["auth"], account, &format!("keyfall:{id}"), nonce)
             .await
     }

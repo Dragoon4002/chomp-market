@@ -49,14 +49,10 @@ async fn until(rx: &mut Rx, t: &str) -> Value {
 
 /// Returns (ws url, http addr).
 async fn serve() -> (String, String) {
-    let near = Arc::new(near_svc::Near::new(
-        "http://127.0.0.1:9",
-        String::new(),
-        None,
-    ));
+    let chain = Arc::new(chain::Chain::default());
     let dir =
         std::env::temp_dir().join(format!("ribbon-test-{}-{}", std::process::id(), rand_id()));
-    let app = ribbon_server::App::new(near, dir, 5);
+    let app = ribbon_server::App::new(chain, dir, 5);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap().to_string();
     tokio::spawn(async move {

@@ -1,17 +1,16 @@
 //! Brawler relay + lobby + referee. Port of old TS relay.
 //! - Pairs 2 players by room code, forwards netplay/signaling (players also go P2P).
 //! - Public rooms listed in lobby; spectators get confirmed input tape.
-//! - Players mirror confirmed inputs here; referee replays, signs the result (gasless). 30 s silent = forfeit.
-//! - On-chain `over` carries `settle` = {match_id, winner, kos, tape_hash, signature}: args for platform `settle`, which
-//!   anyone (the winner's client) submits. Unsettled after SETTLE_FALLBACK_S -> referee report_result (pending.json).
+//! - Players mirror confirmed inputs here; referee replays, computes winner + tape hash. 30 s silent = forfeit.
+//! - TODO(solana): post the referee result on-chain (was settle/report_result; see crates/chain).
 //!
 //! Protocol: server sends {t:'hello', nonce} (32 B base64). Client first msg one of
 //!   {t:'host', name, dna, stage, pub, view, bettable, matchId|null, stake, account, auth?}
 //!   {t:'join', code, name, dna, stage, account, auth?}
 //!   {t:'match', matchId, account, name, dna, stage, auth}   on-chain match w/o pre-made room
 //!   or {t:'watch', code} / {t:'lobby'} / {t:'peek', code}.
-//! On-chain seats need auth = {publicKey, signature}: NEP-413 of `brawler-arena:<matchId>`, recipient CONTRACT_ID,
-//!   nonce = hello nonce, FullAccess key of `account`. Skipped when CONTRACT_ID unset (local dev).
+//! On-chain seats need auth = {publicKey, signature} over `brawler-arena:<matchId>` + hello nonce (chain::verify_auth).
+//!   Skipped when no contract is configured (current default: chain seam is a stub).
 //! On-chain match must have game == "brawler". Seats in start/spec/resume = {name, dna, skills, account}; skills come
 //!   from get_monster on chain seats only ([] otherwise).
 //! Room lobby (host/join): `host` -> {t:'room', code}; `join` -> {t:'room', code, seat:1}. Nothing starts until the host
@@ -29,7 +28,7 @@
 //! Reconnect: {t:'rejoin', code, account, auth?} (live room, that account's seat, opponent still there) re-seats the
 //!   socket; opponent gets {t:'rejoin'}, flushes its tape, answers {t:'resync'}; rejoiner gets
 //!   {t:'resume', code, seat, stage, matchId, bettable, players, frames} (frames = survivor's confirmed tape), relay only.
-//! Paid guest leaves a waiting on-chain room -> referee `unjoin` (refund + reopen); refused -> void via report_result.
+//! Paid guest leaves a waiting on-chain room -> TODO(solana): refund via chain (was `unjoin`).
 //! HTTP: GET /history/{account}, GET /tape/{key} (stage, players+dna+skills, frames, winner, reason, tape_hash; see referee).
 
 mod game;
@@ -41,13 +40,13 @@ mod session;
 
 use axum::Router;
 use brawler_sim::genes::{Dna, Skill, sanitize, sanitize_skills};
-use near_svc::Near;
+use chain::Chain;
 use room::Shared;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::{
     Arc, Mutex, MutexGuard,
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::AtomicU64,
 };
 use std::time::Duration;
 
@@ -56,14 +55,10 @@ const GAME: &str = "brawler";
 pub struct App {
     shared: Mutex<Shared>,
     pub history: history::History,
-    near: Arc<Near>,
+    chain: Arc<Chain>,
     /// Monsters NFT contract; empty = no on-chain DNA lookups.
     monsters: String,
     conn_ids: AtomicU64,
-    /// SETTLE_FALLBACK_S (default 300): unsettled this long after `over` -> referee posts report_result.
-    settle_fallback: Duration,
-    /// Contract holds our referee key -> results go out as attestations.
-    gasless: AtomicBool,
 }
 
 #[derive(Deserialize)]
@@ -80,24 +75,17 @@ struct ChainMatch {
 }
 
 impl App {
-    pub fn new(near: Arc<Near>, monsters: String) -> Arc<Self> {
-        Self::with_history(near, monsters, String::new())
+    pub fn new(chain: Arc<Chain>, monsters: String) -> Arc<Self> {
+        Self::with_history(chain, monsters, String::new())
     }
 
-    pub fn with_history(near: Arc<Near>, monsters: String, history_file: String) -> Arc<Self> {
+    pub fn with_history(chain: Arc<Chain>, monsters: String, history_file: String) -> Arc<Self> {
         Arc::new(App {
             shared: Mutex::default(),
             history: history::History::load(history_file),
-            near,
+            chain,
             monsters,
             conn_ids: AtomicU64::new(1),
-            gasless: AtomicBool::new(false),
-            settle_fallback: Duration::from_secs(
-                std::env::var("SETTLE_FALLBACK_S")
-                    .ok()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(300),
-            ),
         })
     }
 
@@ -106,18 +94,18 @@ impl App {
     }
 
     fn on_chain(&self) -> bool {
-        !self.near.contract.is_empty()
+        !self.chain.contract.is_empty()
     }
 
     async fn get_match(&self, id: u64) -> Option<ChainMatch> {
-        self.near
-            .view(&self.near.contract, "get_match", json!({ "match_id": id }))
+        self.chain
+            .view(&self.chain.contract, "get_match", json!({ "match_id": id }))
             .await
     }
 
     async fn monster_load(&self, token: &str) -> Option<(Dna, Vec<Skill>)> {
         let m: Value = self
-            .near
+            .chain
             .view(&self.monsters, "get_monster", json!({ "token_id": token }))
             .await?;
         (!m["dna"].is_null()).then(|| (sanitize(&m["dna"]), sanitize_skills(&m["skills"])))
@@ -125,33 +113,6 @@ impl App {
 }
 
 pub fn router(app: Arc<App>) -> Router {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_millis() as u64);
-    for (id, p) in app.history.pending() {
-        let wait = p["due_ms"].as_u64().unwrap_or(0).saturating_sub(now);
-        tokio::spawn(game::fallback(app.clone(), id, Duration::from_millis(wait)));
-    }
-    let a = app.clone();
-    tokio::spawn(async move {
-        let g: Option<Value> = a
-            .near
-            .view(&a.near.contract, "get_game", json!({ "game": GAME }))
-            .await;
-        let ok = a
-            .near
-            .public_key()
-            .is_some_and(|k| g.is_some_and(|g| g["referee_key"] == k.as_str()));
-        a.gasless.store(ok, Ordering::Relaxed);
-        eprintln!(
-            "referee: {}",
-            if ok {
-                "gasless attestations"
-            } else {
-                "direct report_result"
-            }
-        );
-    });
     let ticker = app.clone();
     tokio::spawn(async move {
         let mut iv = tokio::time::interval(Duration::from_secs(1));

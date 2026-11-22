@@ -41,14 +41,10 @@ async fn until(rx: &mut Rx, t: &str) -> Value {
 
 #[tokio::test]
 async fn chat_per_room() {
-    let near = Arc::new(near_svc::Near::new(
-        "http://127.0.0.1:9",
-        String::new(),
-        None,
-    ));
+    let chain = Arc::new(chain::Chain::default());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());
-    let app = keyfall_server::App::new(near);
+    let app = keyfall_server::App::new(chain);
     tokio::spawn(async move { axum::serve(listener, keyfall_server::router(app)).await });
 
     let (h, mut rh) = client(&url).await;

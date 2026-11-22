@@ -2,15 +2,15 @@
 //! (the client polls every 1 s), shape set by games/coinflip/client/src/lib/api.ts.
 //!
 //! - `POST /room {matchId, account, side, auth}`: host binds a side to its open match. Server picks a 32-byte
-//!   seed, publishes `commit = sha256(seed)`. auth = NEP-413 over `coinflip:<id>:<side>`.
+//!   seed, publishes `commit = sha256(seed)`. auth = wallet signature over `coinflip:<id>:<side>`.
 //! - `GET /rooms`, `GET /room/{id}`: `{matchId, side, commit, result?, seed?, clientSeed?, bot}`; seed only after the flip.
 //! - `POST /flip {matchId, account, clientSeed, auth}`: a seated player of the live match supplies the client seed
 //!   (first one wins). `result = sha256(seed ‖ clientSeed)[0] & 1`, winner seat = 0 if result == host side,
-//!   else 1, sent as `report_result`. auth = NEP-413 over `coinflip:<id>:<clientSeed>`.
+//!   else 1 (TODO(solana): post result on-chain). auth = wallet signature over `coinflip:<id>:<clientSeed>`.
 //! - `GET /chat/{id}?since=<ts>` -> `[{from, text, ts}]` newer than `since`; `POST /chat/{id} {from, text}`.
 //!   Last 50 lines per room, text <= 200 chars, `from` is display only.
 //!
-//! NEP-413 nonce = sha256(message) (the client can't get a server nonce over plain HTTP).
+//! Signature nonce = sha256(message) (the client can't get a server nonce over plain HTTP).
 //! Without CONTRACT_ID: dev mode, no chain checks and nothing reported.
 use axum::extract::{Path, Query, Request, State};
 use axum::http::{HeaderValue, Method, StatusCode, header};
@@ -18,7 +18,7 @@ use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use near_svc::Near;
+use chain::Chain;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, VecDeque};
@@ -97,15 +97,15 @@ fn bad(msg: &str) -> (StatusCode, Json<Value>) {
 }
 
 pub struct App {
-    near: Arc<Near>,
+    chain: Arc<Chain>,
     // ponytail: one global lock over all rooms; per-room locks if match count gets large
     rooms: Mutex<HashMap<u64, Room>>,
 }
 
 impl App {
-    pub fn new(near: Arc<Near>) -> Arc<Self> {
+    pub fn new(chain: Arc<Chain>) -> Arc<Self> {
         Arc::new(App {
-            near,
+            chain,
             rooms: Mutex::default(),
         })
     }
@@ -119,13 +119,13 @@ impl App {
         status: &str,
         seated: fn(&Value, &str) -> bool,
     ) -> Result<(), &'static str> {
-        if self.near.contract.is_empty() {
+        if self.chain.contract.is_empty() {
             return Ok(());
         }
         let account = m["account"].as_str().unwrap_or("");
         let cm: Value = self
-            .near
-            .view(&self.near.contract, "get_match", json!({ "match_id": id }))
+            .chain
+            .view(&self.chain.contract, "get_match", json!({ "match_id": id }))
             .await
             .ok_or("match not found")?;
         if cm["game"] != GAME
@@ -136,7 +136,7 @@ impl App {
             return Err("not your coinflip match");
         }
         let nonce: [u8; 32] = Sha256::digest(msg).into();
-        if !self.near.verify_auth(&m["auth"], account, msg, nonce).await {
+        if !self.chain.verify_auth(&m["auth"], account, msg, nonce).await {
             return Err("wallet signature check failed");
         }
         Ok(())
@@ -221,9 +221,7 @@ async fn do_flip(State(app): State<Arc<App>>, Json(m): Json<Value>) -> Res {
         let result = flip(&r.seed, cs);
         r.result = Some(result);
         r.client_seed = Some(cs.into());
-        let winner = if result == r.side { 0 } else { 1 };
-        let args = json!({ "match_id": id, "winner": winner, "kos": null, "tape_hash": null });
-        app.near.call(id, "report_result", args, 100);
+        // TODO(solana): post winner seat (`result == r.side` -> 0, else 1) on-chain (was report_result).
     }
     Ok(Json(r.view(id)))
 }

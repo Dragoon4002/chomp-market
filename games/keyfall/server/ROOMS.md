@@ -5,29 +5,29 @@ How 1v1 rooms work in `keyfall-server` (`src/lib.rs`), from connect to on-chain 
 ## Overview
 
 ```
- browser A ─┐                         ┌─ NEAR RPC (views: get_match, access keys)
+ browser A ─┐                         ┌─ chain seam (crates/chain, stub; TODO(solana))
             │  WebSocket (JSON)       │
  browser B ─┼──► keyfall-server ──────┤
             │   rooms: HashMap<code,  │
-            │   Room> behind a Mutex  └─ platform contract (referee tx: report_result)
+            │   Room> behind a Mutex  │
             │   ticker: every 50 ms
 ```
 
 - One process, all state in memory. Exactly one instance may run (rooms are not shared).
 - A **room** is a 4-letter code (`A-Z`) holding two seats, two authoritative sims (one per seat, same seed) and the match phase.
 - Clients send only keystrokes. The server simulates both games and sends each player only their own view, so a client can't fake hits, damage or the result, or see the opponent during the match.
-- Money never touches the server. Stakes are escrowed in the platform contract; the server's referee key can only call `report_result`.
+- Money never touches the server. TODO(solana): stakes escrowed on-chain; the referee can only post results.
 
 ## Components
 
 | Piece | Where | Job |
 |---|---|---|
-| `App` | `lib.rs` | `rooms: Mutex<HashMap<String, Room>>`, `near: Arc<Near>` |
+| `App` | `lib.rs` | `rooms: Mutex<HashMap<String, Room>>`, `chain: Arc<Chain>` |
 | `Room` | `lib.rs` | `match_id`, `stake`, `names[2]`, `tokens[2]`, `conns[2]`, `gone_ms[2]`, `phase`, `count_ms`, `sims[2]` |
 | `Session` | `lib.rs` | one per socket: hello nonce, `(code, seat)` once seated, rate limit |
 | ticker | `router()` | `tokio::time::interval(50 ms)` → `App::tick()` |
 | `Sim` | `game.rs` | rules; stepped at 50 Hz (20 ms) inside each 50 ms tick |
-| `Near` | `crates/near-svc` | `view`, `verify_auth` (NEP-413), `call` (per-match ordered tx queue with retries) |
+| `Chain` | `crates/chain` | `view`, `verify_auth` (stubs, TODO(solana)) |
 
 ## Room lifecycle
 
@@ -43,7 +43,7 @@ How 1v1 rooms work in `keyfall-server` (`src/lib.rs`), from connect to on-chain 
 | `wait` | nothing; one `state` sent when something changed | guest joins → `count`; host disconnects → room deleted |
 | `count` | `count_ms -= 50`; `state` to both seats | `count_ms` hits 0 → `live` |
 | `live` | `acc += 50`; step both sims every 20 ms; check `verdict`; `state` to both seats | verdict, forfeit |
-| `over` | send `over` with `result` to both seats, `report_result` if staked, close sockets, delete room | — |
+| `over` | send `over` with `result` to both seats, (TODO(solana): post result if staked), close sockets, delete room | — |
 
 Disconnects during `count`/`live`: the seat's `conn` becomes `None` and `gone_ms` grows by 50 ms per tick. The sim keeps running (enemies keep attacking). `gone_ms ≥ 15 000` → the other seat wins (`forfeit`). Both seats gone at once → winner by the rules at that moment (`rank`), reason `forfeit`.
 
@@ -84,36 +84,9 @@ JSON text frames, max 4 KiB, max 30 messages per second per socket (extra are dr
 2. B: `peek {code}` (stake `"0"`), then `join {code, name}` → `room {seat:1}`; countdown starts.
 3. Match runs; `over` to both. Nothing on chain.
 
-### Staked room (`matchId`, needs `CONTRACT_ID`)
+### Staked room (`matchId`)
 
-```
- host wallet                       platform contract              keyfall-server                 guest wallet
- create_match("keyfall", stake,
-   false, null) + 1 yocto ───────► match open, stake escrowed
- sign NEP-413 "keyfall:<id>"
- host {matchId, account, auth} ──────────────────────────────────► get_match: game=keyfall,
-                                                                    status=open, host=account;
-                                                                    verify_auth → room CODE
-                                                                                         ◄──── peek CODE (stake)
-                                 match live, stake escrowed ◄──────────────────────────────── join_match(id) + 1 yocto
-                                                                                         ◄──── sign "keyfall:<id>"
-                                                                   ◄──── join {code, account, auth}
-                                                                    get_match: status=live,
-                                                                    guest=account; verify_auth
-                                                                    → countdown → live → over
- report_result(id, winner|null,  ◄──────────────────────────────── referee tx (near-svc queue)
-   null, null): pot to winner's
-   in-contract balance, or refund
-```
-
-Checks the server makes:
-
-- **host:** `get_match(id)` exists, `game == "keyfall"`, `status == "open"`, `host == account`, NEP-413 valid, and no other room already holds this `matchId`.
-- **join:** room is `wait` and holds the same `matchId`; `get_match` has `status == "live"` and `guest == account`; NEP-413 valid.
-- **NEP-413:** message `keyfall:<matchId>`, recipient = `CONTRACT_ID`, nonce = this socket's hello nonce (so a signature can't be replayed on another socket), signed by a **FullAccess** key of `account` (checked over RPC). `near_svc::Near::verify_auth`.
-- Without `CONTRACT_ID` the server refuses any `matchId` ("create a free room").
-
-Settlement: `winner` is `0` (host), `1` (guest) or `null` (draw → contract refunds both stakes). `kos` and `tape_hash` are `null`. The call is queued per match in near-svc and retried 5 times with backoff.
+TODO(solana): chain matches (escrowed stake, wallet-signed seat auth over `keyfall:<matchId>` + hello nonce, referee result post) go through `crates/chain`, currently a stub: `verify_auth` is false and `view` is None, so the server refuses any `matchId` ("create a free room").
 
 ## Ending a match
 
@@ -133,11 +106,11 @@ Both sims get the same seed. Entity ids, kinds, words, sides and heights come fr
 | Threat | Mitigation |
 |---|---|
 | Client fakes hits, damage or result | server-authoritative sims; client sends only keys |
-| Someone takes another wallet's staked seat | `host`/`guest` must match `get_match`, plus NEP-413 by a FullAccess key |
+| Someone takes another wallet's staked seat | `host`/`guest` must match the chain match, plus a wallet signature (TODO(solana)) |
 | Replayed signature | nonce is per socket (hello) |
 | Seat hijack on reconnect | `rejoin` needs the 128-bit random seat token from `room` |
 | Spam / flooding | 4 KiB frames, 30 msg/s per socket, one key per `k` message |
-| Server steals funds | referee key can only call `report_result`; funds stay in the contract |
+| Server steals funds | referee can only post results; funds stay on-chain (TODO(solana)) |
 | Opponent scouting | each seat only ever receives its own view |
 
 ## Config
@@ -145,11 +118,6 @@ Both sims get the same seed. Entity ids, kinds, words, sides and heights come fr
 | Env | Default | Meaning |
 |---|---|---|
 | `PORT` | `8789` | listen port |
-| `NEAR_RPC` | `https://test.rpc.fastnear.com` | RPC for views and txs |
-| `CONTRACT_ID` | empty | platform contract; empty = free rooms only, no auth |
-| `REFEREE_ID` / `REFEREE_KEY` | empty | referee account + ed25519 key; empty = results not reported (logged) |
-
-Game must be registered once by the platform owner: `register_game("keyfall", <referee account>, null)`.
 
 ## Run and test
 

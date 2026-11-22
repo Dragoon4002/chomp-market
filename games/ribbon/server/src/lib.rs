@@ -7,7 +7,7 @@ use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::{Router, routing::get};
 use futures_util::{SinkExt, StreamExt};
-use near_svc::Near;
+use chain::Chain;
 use ribbon_sim::Sim;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -100,7 +100,7 @@ struct ChainMatch {
 }
 
 pub struct App {
-    near: Arc<Near>,
+    chain: Arc<Chain>,
     tape_dir: PathBuf,
     tick_ms: u64,
     // ponytail: one global lock over all rooms; per-room locks if match count gets large
@@ -133,9 +133,9 @@ pub fn tape_hash(tape: &[[u8; 2]]) -> String {
 }
 
 impl App {
-    pub fn new(near: Arc<Near>, tape_dir: impl Into<PathBuf>, tick_ms: u64) -> Arc<Self> {
+    pub fn new(chain: Arc<Chain>, tape_dir: impl Into<PathBuf>, tick_ms: u64) -> Arc<Self> {
         Arc::new(App {
-            near,
+            chain,
             tape_dir: tape_dir.into(),
             tick_ms,
             rooms: Mutex::default(),
@@ -154,12 +154,12 @@ impl App {
             .as_str()
             .filter(|a| !a.is_empty())
             .ok_or("no account")?;
-        if self.near.contract.is_empty() {
+        if self.chain.contract.is_empty() {
             return Ok((id, account.into(), None));
         }
         let cm: ChainMatch = self
-            .near
-            .view(&self.near.contract, "get_match", json!({ "match_id": id }))
+            .chain
+            .view(&self.chain.contract, "get_match", json!({ "match_id": id }))
             .await
             .ok_or("match not found")?;
         if cm.game != GAME {
@@ -177,7 +177,7 @@ impl App {
         };
         let msg = format!("{GAME}:{id}");
         if !self
-            .near
+            .chain
             .verify_auth(&m["auth"], account, &msg, nonce)
             .await
         {
@@ -312,7 +312,7 @@ impl App {
         self.rooms.lock().unwrap().remove(&id);
     }
 
-    /// Broadcast over, save tape, report on chain (no-op without referee).
+    /// Broadcast over, save tape. TODO(solana): post {winner, kos, tape_hash} on-chain (was report_result).
     fn finish(&self, id: u64, r: &mut Room, winner: Option<u8>, reason: &str) {
         let kos = r.sim.score.map(|s| s as u8);
         let over = json!({ "t": "over", "winner": winner, "kos": kos, "reason": reason });
@@ -326,38 +326,17 @@ impl App {
         {
             eprintln!("tape {id}: {e}");
         }
-        let args = json!({ "match_id": id, "winner": winner, "kos": kos, "tape_hash": tape_hash(&r.tape) });
-        self.near.call(id, "report_result", args, 100);
     }
 
-    /// Second seat never came: host alone -> unjoin (refund guest, reopen), else / on failure void.
+    /// Second seat never came: void. TODO(solana): host alone -> refund guest + reopen (was `unjoin`).
     async fn no_show(self: Arc<Self>, id: u64) {
         tokio::time::sleep(NO_SHOW).await;
-        let host_alone = {
-            let rooms = self.rooms.lock().unwrap();
-            let Some(r) = rooms.get(&id) else { return };
-            if r.start_at.is_some() {
-                return;
-            }
-            r.seats[0].conn.is_some() && r.seats[1].account.is_empty()
-        };
-        let on_chain = !self.near.contract.is_empty();
-        let unjoined = on_chain
-            && host_alone
-            && self
-                .near
-                .call_now(id, "unjoin", json!({ "match_id": id }), 30)
-                .await;
         let mut rooms = self.rooms.lock().unwrap();
         let Some(r) = rooms.get_mut(&id) else { return };
         if r.start_at.is_some() {
             return;
         }
-        if unjoined {
-            r.broadcast(&json!({ "t": "over", "winner": null, "kos": [0, 0], "reason": "void" }));
-        } else {
-            self.finish(id, r, None, "void");
-        }
+        self.finish(id, r, None, "void");
         rooms.remove(&id);
     }
 }

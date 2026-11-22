@@ -1,22 +1,17 @@
-//! Ribbon Rush ws server. Env: PORT, NEAR_RPC, CONTRACT_ID, REFEREE_ID, REFEREE_KEY, TAPE_DIR, TICK_MS.
-use near_svc::Near;
+//! Ribbon Rush ws server. Env: PORT, TAPE_DIR, TICK_MS.
+use chain::Chain;
 use std::{env::var, sync::Arc};
 
 #[tokio::main]
 async fn main() {
-    let env = |k: &str| var(k).unwrap_or_default();
-    let contract = env("CONTRACT_ID");
-    let referee_id = env("REFEREE_ID");
-    let referee =
-        (!contract.is_empty() && !referee_id.is_empty()).then(|| (referee_id, env("REFEREE_KEY")));
-    let rpc = var("NEAR_RPC").unwrap_or_else(|_| "https://test.rpc.fastnear.com".into());
+    // TODO(solana): Chain::new(program id from env) once crates/chain is real.
     let tape_dir = var("TAPE_DIR").unwrap_or_else(|_| "./tapes".into());
     let tick_ms = var("TICK_MS")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(66);
     let app = ribbon_server::App::new(
-        Arc::new(Near::new(&rpc, contract, referee)),
+        Arc::new(Chain::default()),
         tape_dir,
         tick_ms,
     );

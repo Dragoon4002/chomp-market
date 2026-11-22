@@ -37,14 +37,10 @@ fn hex<const N: usize>(b: [u8; N]) -> String {
 
 #[tokio::test]
 async fn rooms_flip_and_chat() {
-    let near = Arc::new(near_svc::Near::new(
-        "http://127.0.0.1:9",
-        String::new(),
-        None,
-    ));
+    let chain = Arc::new(chain::Chain::default());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap().to_string();
-    let app = coinflip_server::App::new(near);
+    let app = coinflip_server::App::new(chain);
     tokio::spawn(async move { axum::serve(listener, coinflip_server::router(app)).await });
 
     for (id, side) in [(1, 0), (2, 1)] {

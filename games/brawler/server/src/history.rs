@@ -1,10 +1,7 @@
 //! Finished-match log for player profiles. Appended to HISTORY_FILE (JSON lines) so it survives restarts.
 //! Each match's input tape goes to `tapes/<key>.json` next to it (replay + fairness check).
-//! Unsettled on-chain results wait in `pending.json` (match id -> {settle, due_ms}) for the referee fallback.
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::{
-    collections::BTreeMap,
     fs::OpenOptions,
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
@@ -35,7 +32,6 @@ pub struct Rec {
 pub struct History {
     path: String,
     recs: Mutex<Vec<Rec>>,
-    pending: Mutex<BTreeMap<u64, Value>>,
 }
 
 pub fn key_ok(key: &str) -> bool {
@@ -53,45 +49,10 @@ impl History {
                     .collect()
             })
             .unwrap_or_default();
-        let pending = Self::pending_path(&path)
-            .and_then(|p| std::fs::read_to_string(p).ok())
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default();
         History {
             path,
             recs: Mutex::new(recs),
-            pending: Mutex::new(pending),
         }
-    }
-
-    fn pending_path(path: &str) -> Option<PathBuf> {
-        (!path.is_empty()).then(|| {
-            Path::new(path)
-                .parent()
-                .unwrap_or(Path::new(""))
-                .join("pending.json")
-        })
-    }
-
-    /// Some = add/replace, None = drop. Rewrites the file.
-    pub fn set_pending(&self, id: u64, v: Option<Value>) {
-        let mut p = self.pending.lock().unwrap();
-        match v {
-            Some(v) => p.insert(id, v),
-            None => p.remove(&id),
-        };
-        if let Some(f) = Self::pending_path(&self.path) {
-            let _ = std::fs::write(f, serde_json::to_string(&*p).unwrap_or_default());
-        }
-    }
-
-    pub fn pending(&self) -> Vec<(u64, Value)> {
-        self.pending
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|(k, v)| (*k, v.clone()))
-            .collect()
     }
 
     pub fn push(&self, r: Rec) {

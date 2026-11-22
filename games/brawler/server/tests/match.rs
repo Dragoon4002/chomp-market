@@ -56,11 +56,7 @@ type Tx = mpsc::UnboundedSender<Value>;
 type Rx = mpsc::UnboundedReceiver<Value>;
 
 async fn serve() -> String {
-    serve_with("http://127.0.0.1:9", "", "").await
-}
-
-async fn serve_with(rpc: &str, contract: &str, monsters: &str) -> String {
-    let near = Arc::new(near_svc::Near::new(rpc, contract.into(), None));
+    let chain = Arc::new(chain::Chain::default());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());
     static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
@@ -69,7 +65,7 @@ async fn serve_with(rpc: &str, contract: &str, monsters: &str) -> String {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let history = dir.join("h.jsonl").to_string_lossy().into_owned();
-    let app = brawler_server::App::with_history(near, monsters.into(), history);
+    let app = brawler_server::App::with_history(chain, String::new(), history);
     tokio::spawn(async move {
         axum::serve(listener, brawler_server::router(app))
             .await
@@ -83,7 +79,7 @@ fn golden() -> Value {
     g["runs"][4].clone()
 }
 
-/// Host + join (optionally on-chain matchId, unchecked w/o CONTRACT_ID), seated in the waiting room.
+/// Host + join (optionally on-chain matchId, unchecked w/o a contract), seated in the waiting room.
 async fn seated(url: &str, run: &Value, match_id: Value) -> (Tx, Rx, Tx, Rx, Value) {
     let (a, mut ar) = client(url).await;
     let (b, mut br) = client(url).await;
@@ -256,10 +252,10 @@ async fn play_needs_wallet() {
     let url = serve().await;
     let (a, mut ar) = client(&url).await;
     a.send(json!({ "t": "host", "name": "A" })).unwrap();
-    assert_eq!(err(&mut ar).await, "Connect your NEAR wallet to play");
+    assert_eq!(err(&mut ar).await, "Connect your wallet to play");
     a.send(json!({ "t": "join", "code": "ABCD", "name": "A" }))
         .unwrap();
-    assert_eq!(err(&mut ar).await, "Connect your NEAR wallet to play");
+    assert_eq!(err(&mut ar).await, "Connect your wallet to play");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -355,7 +351,7 @@ async fn chat_reaches_room_and_late_watcher() {
     let url = serve().await;
     let run = golden();
     let (a, mut ar, b, mut br, code) = seated(&url, &run, Value::Null).await;
-    let (w, mut wr) = watcher(&url, &code, "bob.near").await;
+    let (w, mut wr) = watcher(&url, &code, "bob.sol").await;
     a.send(json!({ "t": "chat", "text": "  hi  " })).unwrap();
     for rx in [&mut ar, &mut br, &mut wr] {
         let c = until(rx, "chat").await;
@@ -369,7 +365,7 @@ async fn chat_reaches_room_and_late_watcher() {
     let c = until(&mut ar, "chat").await;
     assert_eq!(
         (c["from"].as_str(), c["seat"].as_i64()),
-        (Some("bob.near"), Some(-1))
+        (Some("bob.sol"), Some(-1))
     );
     // 2nd msg inside 500 ms dropped; the `set` after it on the same socket proves it was processed
     b.send(json!({ "t": "chat", "text": "x".repeat(300) }))
@@ -473,115 +469,4 @@ async fn call_bot_flags_room_in_lobby() {
         err(&mut br).await,
         "Only a host waiting alone can call a bot"
     );
-}
-
-/// Fake NEAR RPC: view calls answered by `views(method, args)`, every access key is FullAccess.
-async fn mock_rpc(views: fn(&str, &Value) -> Value) -> String {
-    use base64::{Engine, engine::general_purpose::STANDARD as B64};
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let url = format!("http://{}", listener.local_addr().unwrap());
-    let app = axum::Router::new().route(
-        "/",
-        axum::routing::post(move |axum::Json(req): axum::Json<Value>| async move {
-            let p = &req["params"];
-            let mut result = if p["request_type"] == "view_access_key" {
-                json!({ "nonce": 0, "permission": "FullAccess" })
-            } else {
-                let args = B64.decode(p["args_base64"].as_str().unwrap()).unwrap();
-                let args: Value = serde_json::from_slice(&args).unwrap();
-                let out = views(p["method_name"].as_str().unwrap(), &args);
-                json!({ "result": out.to_string().into_bytes(), "logs": [] })
-            };
-            result["block_height"] = 1.into();
-            result["block_hash"] = "11111111111111111111111111111111".into();
-            axum::Json(json!({ "jsonrpc": "2.0", "id": req["id"], "result": result }))
-        }),
-    );
-    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    url
-}
-
-fn skill_run() -> Value {
-    let g: Value = serde_json::from_str(include_str!("../../sim/testdata/golden.json")).unwrap();
-    g["runs"][11].clone()
-}
-
-/// NEP-413 seat auth for `brawler-arena:<id>` with the server's hello nonce.
-fn seat_auth(nonce: &Value, match_id: u64) -> Value {
-    use base64::{Engine, engine::general_purpose::STANDARD as B64};
-    use near_api::{signer::NEP413Payload, types::Signature};
-    let sk = near_api::signer::generate_secret_key().unwrap();
-    let nonce: [u8; 32] = B64
-        .decode(nonce.as_str().unwrap())
-        .unwrap()
-        .try_into()
-        .unwrap();
-    let p = NEP413Payload {
-        message: format!("brawler-arena:{match_id}"),
-        nonce,
-        recipient: "arena.testnet".into(),
-        callback_url: None,
-    };
-    let Signature::ED25519(s) = sk.sign(p.compute_hash().unwrap()) else {
-        unreachable!()
-    };
-    json!({ "publicKey": sk.public_key().to_string(), "signature": B64.encode(s.to_bytes()) })
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn chain_seats_fight_with_equipped_skills() {
-    let rpc = mock_rpc(|method, args| {
-        let run = skill_run();
-        match method {
-            "get_match" => json!({
-                "status": "live", "host": "a.testnet", "guest": "b.testnet", "stake": "0", "bettable": false,
-                "monsters": ["m0", "m1"], "game": "brawler",
-            }),
-            "get_monster" => {
-                let i = (args["token_id"] == "m1") as usize;
-                let skills: Vec<Value> = run["skills"][i]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .enumerate()
-                    .map(|(n, s)| json!({ "id": n + 1, "kind": s["kind"], "mag": s["mag"] }))
-                    .collect();
-                json!({ "token_id": args["token_id"], "dna": run["dna"][i], "skills": skills })
-            }
-            _ => Value::Null,
-        }
-    })
-    .await;
-    let url = serve_with(&rpc, "arena.testnet", "monsters.testnet").await;
-    let run = skill_run();
-    let (a, mut ar) = client(&url).await;
-    let (b, mut br) = client(&url).await;
-    // chain seats ignore client-claimed dna/skills
-    let fake = json!({ "str": 3, "dex": 3, "def": 7, "spd": 9 });
-    for (tx, rx, acct) in [(&a, &mut ar, "a.testnet"), (&b, &mut br, "b.testnet")] {
-        let nonce = until(rx, "hello").await["nonce"].clone();
-        tx.send(json!({ "t": "match", "matchId": 7, "account": acct, "name": acct, "dna": fake, "skills": [{ "kind": "Power", "mag": 2 }], "stage": run["stage"], "auth": seat_auth(&nonce, 7) }))
-            .unwrap();
-        until(rx, "room").await;
-    }
-    let start = until(&mut ar, "start").await;
-    until(&mut br, "start").await;
-    for i in 0..2 {
-        assert_eq!(start["players"][i]["dna"], run["dna"][i]);
-        assert_eq!(start["players"][i]["skills"], run["skills"][i]);
-    }
-    // same tape without skills ends differently, so the referee's verdict below proves it applied them
-    let plain = {
-        use brawler_sim::{StageId, genes, new_game, step};
-        let d = |i: usize| genes::stats_of(&genes::sanitize(&run["dna"][i]));
-        let stage = StageId::parse(run["stage"].as_str().unwrap()).unwrap();
-        let mut s = new_game([d(0), d(1)], stage);
-        for t in run["tape"].as_array().unwrap() {
-            let t = t.as_i64().unwrap() as i32;
-            step(&mut s, [t >> 16, t & 0xffff]);
-        }
-        s.winner
-    };
-    assert_ne!(plain as i64, run["winner"].as_i64().unwrap());
-    play_ko(&run, &a, &mut ar, &b, &mut br).await;
 }

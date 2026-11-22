@@ -17,7 +17,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::{Notify, mpsc};
 
 /// Netplay/signaling messages forwarded verbatim to the other seat.
-const NO_WALLET: &str = "Connect your NEAR wallet to play";
+const NO_WALLET: &str = "Connect your wallet to play";
 const RELAYED: [&str; 6] = ["in", "hash", "sdp", "ice", "go", "pick"];
 const MAX_MSG: usize = 16 * 1024;
 const TAPE_BATCH: usize = 600;
@@ -178,9 +178,8 @@ impl Session {
     }
 
     async fn authed(&self, m: &Value, account: &str, match_id: u64) -> bool {
-        let near = &self.app.near;
         !self.app.on_chain()
-            || near
+            || self.app.chain
                 .verify_auth(
                     &m["auth"],
                     account,
@@ -673,9 +672,7 @@ impl Session {
             }
             Some(i) if r.status == Status::Waiting => {
                 r.seats.remove(i);
-                if let Some(id) = r.match_id {
-                    tokio::spawn(game::unjoin(self.app.clone(), at.clone(), id));
-                }
+                // TODO(solana): paid guest left a chain room -> refund + reopen (was `unjoin`).
             }
             Some(i) => {
                 r.seats[i].conn = None;

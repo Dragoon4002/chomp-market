@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 ribbon-sim = { path = "../sim" }
-near-svc = { path = "../../../crates/near-svc" }
+chain = { path = "../../../crates/chain" }
 axum = { version = "0.8", features = ["ws"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync"] }
 serde = { version = "1", features = ["derive"] }

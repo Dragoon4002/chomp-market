@@ -1,5 +1,5 @@
 //! DNA trust boundary: port of client genes.ts sanitize + statsOf.
-//! ponytail: breed/randomDna stay in contract genes.rs (needs #[near] serializers); merge if a 3rd copy appears.
+//! ponytail: breed/randomDna lived in the removed on-chain contract; TODO(solana): port to the program (DNA must stay on-chain).
 use crate::{Stats, js_max, js_min, js_round};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
