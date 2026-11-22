@@ -391,3 +391,18 @@ Already OK: @xyz/platform provider/calls, assets=null, direct report_result, NEP
 - [x] title.png = full-page bg (art top, panel starts under it; phone offsets bg under wallet bar). banner img removed.
 - [x] Remotion toss videos: games/coinflip/video (Toss-hh/ht/th/tt, 1200x800 60fps 2 s, VP9 alpha) -> client/public/coin/toss-{hh,ht,th,tt}.webm. Head = brawler ui/coin.webp flattened (face.py), tails = star. Chrome alpha + start/end faces verified. Not wired into client yet.
 - [x] Room modal plays toss-<side><result>.webm (idle = first frame of toss-<side><side>), landed on video end. Verified desk+phone; fixed dup key when result==side.
+
+# Game portal (plan: ~/.claude/plans/fizzy-seeking-sphinx-of-37382104-4226-4746-9167-1050224bb82a.md)
+- [x] games/<slug>/{game.json,INTAKE.md,src/,build/} convention + games/_template
+- [x] next.config reads games/*/game.json -> CHOMP_GAMES; market/lib/games.ts
+- [x] /play grid (tag chips), /play/[slug] sandboxed iframe player, GameCard shared w/ home
+- [x] /g/[slug]/[...path] build server (MIME, .gz/.br, CORS, traversal guard)
+- [x] public/chomp-sdk.js postMessage bridge (ready/start/result/frames <-> session)
+- [x] 2048 (MIT) smoke game; first-party games get game.json (url)
+- [x] market Dockerfile ships games/*/build
+
+## Review (portal)
+- tsc clean, `bun run build` ok.
+- curl: /g/2048/* 200 w/ right MIME + ACAO *; `..%2F` / `%2E%2E` / bad slug -> 404.
+- Headless Chrome: /play 2 playable + 3 soon cards; /play/2048 renders, bridge `ready` -> `session` w/ seed, frame origin `null`, parent.localStorage blocked, 0 console errors.
+- Not verified: docker image build, Godot/Unity export through /g route.

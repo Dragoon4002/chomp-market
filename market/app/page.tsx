@@ -1,11 +1,9 @@
 "use client";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { art, change24, fmt, GAMES, amount, skillKey, useAssets, type Point } from "@/lib/assets";
-import { Card as UiCard, CardContent, CardDescription, CardTitle } from "@/components/shadcn/card";
-import { Badge } from "@/components/shadcn/badge";
-import { Button } from "@/components/shadcn/button";
-import { Play } from "lucide-react";
+import { art, change24, fmt, amount, skillKey, useAssets, type Point } from "@/lib/assets";
+import { GameCard } from "@/components/game-card";
+import { GAMES } from "@/lib/games";
 import { cx, Empty, Loading, MonsterArt, Panel, Pct, prices, SkillArt, SkillRow, Sparkline, useLoad } from "@/components/ui";
 
 function Card({ label, href, chart, icon, name, value, delta }: { label: string; href: string; chart: number[]; icon: ReactNode; name: string; value: string; delta: ReactNode }) {
@@ -63,25 +61,10 @@ export default function Home() {
       <section id="games" className="mt-6 scroll-mt-6">
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="text-xl">Most Popular Games</h2>
-          <Link href="/search" className="shrink-0 text-sm font-bold text-indigo-400 hover:underline">View All</Link>
+          <Link href="/play" className="shrink-0 text-sm font-bold text-indigo-400 hover:underline">View All</Link>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {GAMES.map((g) => (
-            <UiCard key={g.id} className="glow gap-0 overflow-hidden rounded-2xl bg-panel py-0">
-              <div className="relative">
-                <img src={art(`${g.id}.png`)} alt="" className={cx("aspect-[274/166] w-full object-cover", "soon" in g && "opacity-60 grayscale-[60%]")} />
-                {"soon" in g && <Badge variant="outline" className="absolute right-3 top-3 border-white/10 bg-black/70 font-bold text-neutral-200">Coming Soon</Badge>}
-              </div>
-              <CardContent className="flex flex-1 flex-col p-4">
-                <CardTitle className="text-lg">{g.name}</CardTitle>
-                <CardDescription className="mt-1 flex-1 text-xs font-semibold text-muted">{g.desc}</CardDescription>
-                <p className="my-3 text-lg leading-none text-amber-400" aria-label="4 out of 5 stars">★★★★☆</p>
-                {"soon" in g
-                  ? <Button disabled variant="outline" className="h-9 rounded-full border-white/10 bg-transparent text-sm font-bold">Coming Soon</Button>
-                  : <Button asChild variant="outline" className="h-9 rounded-full border-indigo-500 bg-transparent text-sm font-bold text-indigo-400 hover:bg-indigo-600 hover:text-white dark:border-indigo-500 dark:bg-transparent dark:hover:bg-indigo-600"><a href={g.url}><Play className="fill-current" /> Play Now</a></Button>}
-              </CardContent>
-            </UiCard>
-          ))}
+          {GAMES.slice(0, 4).map((g) => <GameCard key={g.slug} g={g} />)}
         </div>
       </section>
 

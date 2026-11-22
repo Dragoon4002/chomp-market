@@ -1,0 +1,12 @@
+{
+  "name": "Game Name",
+  "desc": "One line shown on the card.",
+  "engine": "html5",
+  "thumb": "thumb.png",
+  "tags": ["puzzle", "pvp"],
+  "entry": "index.html",
+  "settle": "result",
+  "license": "MIT",
+  "source": "https://github.com/owner/repo",
+  "soon": true
+}

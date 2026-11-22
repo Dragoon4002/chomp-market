@@ -1,0 +1,13 @@
+{
+  "name": "CoinFlip",
+  "desc": "Heads or tails. A simple, fast, and fair game.",
+  "engine": "next",
+  "thumb": "/dash/coinflip.png",
+  "tags": [
+    "chance"
+  ],
+  "url": "http://localhost:3003",
+  "settle": "result",
+  "license": "MIT",
+  "soon": true
+}

@@ -1,0 +1,14 @@
+{
+  "name": "Keyfall",
+  "desc": "Type fast, shoot down bombers, defend your city in a 1v1 duel.",
+  "engine": "next",
+  "thumb": "/dash/keyfall.png",
+  "tags": [
+    "typing",
+    "pvp"
+  ],
+  "url": "http://localhost:3004",
+  "settle": "result",
+  "license": "MIT",
+  "soon": true
+}

@@ -1,0 +1,13 @@
+{
+  "name": "Brawler Arena",
+  "desc": "Action-packed arena battles with unique heroes and abilities.",
+  "engine": "next",
+  "thumb": "/dash/brawler.png",
+  "tags": [
+    "fighting",
+    "pvp"
+  ],
+  "url": "http://localhost:3000",
+  "settle": "frames",
+  "license": "MIT"
+}

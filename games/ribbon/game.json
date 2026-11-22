@@ -1,0 +1,14 @@
+{
+  "name": "Ribbon Rush",
+  "desc": "Fast-paced racing battles with strategy and power-ups.",
+  "engine": "next",
+  "thumb": "/dash/ribbon.png",
+  "tags": [
+    "racing",
+    "pvp"
+  ],
+  "url": "https://ribbon-rush.vercel.app",
+  "settle": "frames",
+  "license": "MIT",
+  "soon": true
+}

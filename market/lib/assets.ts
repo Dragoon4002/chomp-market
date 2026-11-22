@@ -3,13 +3,6 @@ import { demoApi } from "./demo";
 
 export const ASSETS_ID = process.env.NEXT_PUBLIC_ASSETS_ID || "";
 export const BRAWLER_URL = process.env.NEXT_PUBLIC_BRAWLER_URL || "http://localhost:3000";
-// ponytail: hosted fallbacks are placeholders; set NEXT_PUBLIC_<GAME>_URL per deploy
-export const GAMES = [
-  { id: "ribbon", soon: true, name: "Ribbon Rush", url: process.env.NEXT_PUBLIC_RIBBON_URL || "https://ribbon-rush.vercel.app", desc: "Fast-paced racing battles with strategy and power-ups." },
-  { id: "brawler", name: "Brawler Arena", url: BRAWLER_URL, desc: "Action-packed arena battles with unique heroes and abilities." },
-  { id: "keyfall", soon: true, name: "Keyfall", url: process.env.NEXT_PUBLIC_KEYFALL_URL || "http://localhost:3004", desc: "Type fast, shoot down bombers, defend your city in a 1v1 duel." },
-  { id: "coinflip", soon: true, name: "CoinFlip", url: process.env.NEXT_PUBLIC_COINFLIP_URL || "http://localhost:3003", desc: "Heads or tails. A simple, fast, and fair game." },
-];
 export const art = (f: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/dash/${f}`;
 export const DEMO =
   process.env.NEXT_PUBLIC_DEMO === "1" ||
