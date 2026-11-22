@@ -1,0 +1,31 @@
+{
+  "name": "@xyz/brawler",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --no-warnings --test src/lib/sim/sim.test.ts src/lib/genes.test.ts src/lib/net.test.ts src/lib/market.test.ts src/lib/nft.test.ts src/lib/leaderboard.test.ts src/lib/tape.test.ts src/lib/intents.test.ts src/lib/fastauth.test.ts",
+    "godot:build": "node --experimental-strip-types --no-warnings ../godot/tools/export-data.ts && mkdir -p public/godot/game && \"${GODOT:-godot}\" --headless --path ../godot --export-release Web"
+  },
+  "dependencies": {
+    "@fast-auth-near/javascript-provider": "^1.4.1",
+    "@hot-labs/near-connect": "^0.11.4",
+    "@xyz/platform": "*",
+    "jose": "^6.2.17",
+    "near-api-js": "^7.2.0",
+    "near-connect-hooks": "^1.1.6",
+    "next": "^16.4.6",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "^7.0.2"
+  }
+}

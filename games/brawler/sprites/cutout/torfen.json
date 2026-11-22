@@ -1,0 +1,27 @@
+{
+  "src": "assets/creatures/horned-heroes/torfen.png",
+  "feet": [172, 340], "hip": [172, 238], "height": 335,
+  "parts": [
+    {"name": "cape",       "bone": "cape",   "parent": "torso",  "pivot": [112, 128], "fill": 40,
+     "poly": [[0,92],[100,98],[98,150],[94,180],[94,215],[105,240],[110,300],[0,300]]},
+    {"name": "backThigh",  "bone": "bt",     "parent": null,     "pivot": [138, 238], "fill": 14,
+     "poly": [[112,240],[162,240],[160,288],[112,290]]},
+    {"name": "backShin",   "bone": "bs",     "parent": "backThigh", "pivot": [135, 286], "fill": 0,
+     "poly": [[88,286],[162,284],[164,350],[86,350]]},
+    {"name": "frontThigh", "bone": "ft",     "parent": null,     "pivot": [205, 238], "fill": 14,
+     "poly": [[178,240],[230,240],[228,284],[184,286]]},
+    {"name": "frontShin",  "bone": "fs",     "parent": "frontThigh", "pivot": [205, 284], "fill": 0,
+     "poly": [[164,282],[234,280],[250,350],[160,350]]},
+    {"name": "torso",      "bone": "t",      "parent": null,     "pivot": [172, 238], "fill": 40, "rest": true, "fillPoly": [[118,118],[208,118],[210,252],[118,252]]},
+    {"name": "backUpper",  "bone": "bu",     "parent": "torso",  "pivot": [125, 135], "fill": 10,
+     "poly": [[98,106],[154,106],[156,148],[128,160],[122,178],[94,180],[96,150]]},
+    {"name": "backFore",   "bone": "bl",     "parent": "backUpper", "pivot": [106, 176], "fill": 0,
+     "poly": [[92,175],[122,172],[134,200],[153,203],[153,242],[116,242],[90,216]]},
+    {"name": "head",       "bone": "h",      "parent": "torso",  "pivot": [165, 128], "fill": 0,
+     "poly": [[78,0],[220,0],[218,122],[196,124],[170,127],[140,129],[112,128],[94,110],[78,92]]},
+    {"name": "frontUpper", "bone": "fu",     "parent": "torso",  "pivot": [200, 138], "fill": 10,
+     "poly": [[186,126],[216,122],[220,168],[204,180],[190,162]]},
+    {"name": "frontFore",  "bone": "fl",     "parent": "frontUpper", "pivot": [206, 182], "fill": 0,
+     "poly": [[204,164],[258,146],[258,90],[368,90],[368,212],[254,212],[250,220],[206,220],[198,196]]}
+  ]
+}

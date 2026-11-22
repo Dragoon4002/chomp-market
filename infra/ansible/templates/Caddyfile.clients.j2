@@ -1,0 +1,9 @@
+{{ domain }} {
+	encode zstd gzip
+	reverse_proxy brawler-client:3000
+}
+
+market.{{ domain }} {
+	encode zstd gzip
+	reverse_proxy market:3000
+}

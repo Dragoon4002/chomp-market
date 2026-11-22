@@ -1,0 +1,23 @@
+# clients box: game client + market behind caddy (server + bots live on the server box)
+services:
+  brawler-client:
+    image: brawler-client
+    restart: unless-stopped
+
+  market:
+    image: brawler-market
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [brawler-client, market]
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

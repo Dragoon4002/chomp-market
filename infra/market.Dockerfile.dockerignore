@@ -1,0 +1,6 @@
+**
+!market/**
+market/node_modules
+market/.next
+market/.env*
+!agents/pricing.ts

@@ -1,0 +1,4 @@
+[workspace]
+resolver = "3"
+members = ["crates/near-svc", "games/brawler/sim", "games/brawler/server", "games/ribbon/sim", "games/ribbon/server", "games/keyfall/server", "games/coinflip/server"]
+exclude = ["contracts", "games/brawler/contract"]

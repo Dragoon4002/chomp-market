@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 883 200" role="img" aria-label="KEYFALL">
+<defs><path id="t" d="M9.0 156.0H33.1L40.3 129.0L55.1 155.8H96.2L59.4 112.5L110.5 54.0H85.5L51.7 94.5L67.4 54.0H47.2Z M136.2 156.0H207.6L208.7 129.3H165.8L170.4 112.5L203.0 110.5L207.7 92.6L175.3 94.0L181.1 72.4L224.2 70.2L233.3 53.5L166.6 55.6Z M288.7 124.0 277.6 156.1H305.9L313.2 124.0L365.2 54.0H343.6L308.1 99.2L296.5 54.0H275.0Z M377.8 156.0H402.4L413.1 108.0H447.3L452.8 87.6L418.4 87.4L424.9 71.5L463.9 69.1L468.2 53.1L410.4 55.0Z M480.5 156.2H505.8L514.8 140.6H552.4L551.9 156.2H578.2L565.3 54.0H548.4ZM526.9 118.4 550.4 77.2 552.4 118.4Z M618.3 156.0H687.1L693.8 131.4L647.5 133.4L670.8 54.0H651.3Z M727.1 156.0H796.0L802.6 131.4L756.4 133.4L779.7 54.0H760.1Z" transform="translate(26 -18)"/>
+<filter id="u" x="-10%" y="-10%" width="120%" height="140%"><feGaussianBlur stdDeviation="5"/></filter></defs>
+<use href="#t" fill="#000" fill-opacity=".5" stroke="#000" stroke-opacity=".5" stroke-width="14" transform="translate(4 8)" filter="url(#u)"/>
+<use href="#t" fill="#5e4f5d" stroke="#1d1a24" stroke-width="12" stroke-linejoin="round" transform="translate(6 9)"/>
+<use href="#t" fill="#fff" stroke="#1d1a24" stroke-width="10" stroke-linejoin="round" paint-order="stroke"/>
+<rect x="40" y="166" width="803" height="10" fill="#0ff" opacity=".35" rx="5"/>
+<rect x="40" y="168" width="803" height="6" fill="#0ff" rx="3"/>
+<rect x="40" y="169" width="803" height="2" fill="#fff" opacity=".85"/>
+</svg>

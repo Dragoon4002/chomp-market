@@ -1,0 +1,25 @@
+<!doctype html><body style="margin:0;background:#556">
+<canvas id=c width=1600 height=900></canvas>
+<script type=module>
+import { POSES, poseFor } from '/src/lib/render/rig.ts';
+import { hero, drawHero } from '/src/lib/render/cutout.ts';
+const name = new URLSearchParams(location.search).get('h') || 'lortor';
+const ATT = ['jab1','jab3','sideLight','downLight','nHeavy','sHeavy','dHeavy','airSide','recovery','groundPound'];
+const ctx = c.getContext('2d');
+// attack strike pose via poseFor with a fake fighter at the strike frame
+const { MOVES } = await import('/src/lib/sim/moves.ts');
+const { startup } = await import('/src/lib/sim/sim.ts');
+const strike = (m) => { const f = { state: 'attack', move: m, t: 0, grounded: !MOVES[m].air, vx: 0, vy: 0, mod: { startup: 0 } }; f.t = startup(f, MOVES[m]) + 2; return poseFor(f, 0); };
+const items = [...Object.entries(POSES), ...ATT.map((m) => [m, strike(m)])];
+const tick = () => {
+  const h = hero(name); if (!h) return requestAnimationFrame(tick);
+  ctx.font = '14px sans-serif'; ctx.fillStyle = '#fff';
+  items.forEach(([k, p], i) => {
+    const x = 90 + (i % 8) * 190, y = 230 + Math.floor(i / 8) * 300;
+    ctx.fillText(k, x - 40, y + 30);
+    ctx.save(); ctx.translate(x, y); ctx.scale(1.6, 1.6); drawHero(ctx, p, h, false); ctx.restore();
+  });
+  document.title = 'done';
+};
+tick();
+</script>

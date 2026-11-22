@@ -1,0 +1,16 @@
+[package]
+name = "keyfall-server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+near-svc = { path = "../../../crates/near-svc" }
+axum = { version = "0.8", features = ["ws"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync"] }
+serde_json = "1"
+base64 = "0.22"
+rand = "0.9"
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+
+[dev-dependencies]
+tokio-tungstenite = "0.28"

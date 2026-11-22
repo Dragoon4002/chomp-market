@@ -1,0 +1,67 @@
+# env from shell or infra/.env. no CONTRACT_ID = free rooms only
+services:
+  brawler-server:
+    image: brawler-server
+    build: { context: .., dockerfile: infra/brawler-server.Dockerfile }
+    ports: ["${BRAWLER_PORT:-8787}:8787"]
+    environment:
+      NEAR_RPC: ${NEAR_RPC:-https://test.rpc.fastnear.com}
+      CONTRACT_ID: ${CONTRACT_ID:-}
+      MONSTERS_ID: ${MONSTERS_ID:-}
+      REFEREE_ID: ${REFEREE_ID:-}
+      REFEREE_KEY: ${REFEREE_KEY:-}
+      SETTLE_FALLBACK_S: ${SETTLE_FALLBACK_S:-300}
+    volumes: [brawler_data:/data]
+    restart: unless-stopped
+
+  ribbon-server:
+    image: ribbon-server
+    build: { context: .., dockerfile: infra/ribbon-server.Dockerfile }
+    ports: ["${RIBBON_PORT:-8788}:8788"]
+    environment:
+      NEAR_RPC: ${NEAR_RPC:-https://test.rpc.fastnear.com}
+      CONTRACT_ID: ${CONTRACT_ID:-}
+      REFEREE_ID: ${REFEREE_ID:-}
+      REFEREE_KEY: ${REFEREE_KEY:-}
+    volumes: [ribbon_data:/data]
+    restart: unless-stopped
+
+  keyfall-server:
+    image: keyfall-server
+    build: { context: .., dockerfile: infra/keyfall-server.Dockerfile }
+    ports: ["${KEYFALL_PORT:-8789}:8789"]
+    environment:
+      NEAR_RPC: ${NEAR_RPC:-https://test.rpc.fastnear.com}
+      CONTRACT_ID: ${CONTRACT_ID:-}
+      REFEREE_ID: ${REFEREE_ID:-}
+      REFEREE_KEY: ${REFEREE_KEY:-}
+    restart: unless-stopped
+
+  # Coinflip commit-reveal + per-room chat over HTTP (games/coinflip/server)
+  coinflip-server:
+    image: coinflip-server
+    build: { context: .., dockerfile: infra/coinflip-server.Dockerfile }
+    ports: ["${COINFLIP_PORT:-8790}:8790"]
+    environment:
+      NEAR_RPC: ${NEAR_RPC:-https://test.rpc.fastnear.com}
+      CONTRACT_ID: ${CONTRACT_ID:-}
+      REFEREE_ID: ${REFEREE_ID:-}
+      REFEREE_KEY: ${REFEREE_KEY:-}
+    restart: unless-stopped
+
+  # Bots that join a free room when its host presses "Call bot" (never bot vs bot) + commentator, free rooms only. Env: agents/README.md
+  agents:
+    image: brawler-agents
+    build: { context: .., dockerfile: infra/agents.Dockerfile }
+    environment:
+      SERVER_URL: ${AGENTS_SERVER_URL:-ws://brawler-server:8787}
+      COMMENTATOR: ${AGENTS_COMMENTATOR:-1}
+      BOT_LEVEL: ${AGENTS_BOT_LEVEL:-medium}
+      MERCHANTS: ${MERCHANTS:-smithy.brawler-platform-5c8e2b.testnet,alchemist.brawler-platform-5c8e2b.testnet}
+      MERCHANT_KEYS: ${MERCHANT_KEYS:-}
+    depends_on: [brawler-server]
+    restart: unless-stopped
+
+volumes:
+  brawler_data:
+  ribbon_data:

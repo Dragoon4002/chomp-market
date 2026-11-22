@@ -1,0 +1,27 @@
+{
+  "src": "assets/creatures/horned-heroes/makvel.png",
+  "feet": [172, 356], "hip": [172, 250], "height": 344,
+  "parts": [
+    {"name": "cape",       "bone": "cape",   "parent": "torso",  "pivot": [115, 145], "fill": 40,
+     "poly": [[0,120],[100,128],[98,170],[94,200],[100,240],[112,265],[118,300],[100,340],[0,340]]},
+    {"name": "backThigh",  "bone": "bt",     "parent": null,     "pivot": [145, 252], "fill": 14,
+     "poly": [[118,250],[168,250],[168,282],[118,284]]},
+    {"name": "backShin",   "bone": "bs",     "parent": "backThigh", "pivot": [142, 282], "fill": 0,
+     "poly": [[95,280],[170,280],[172,365],[90,365]]},
+    {"name": "frontThigh", "bone": "ft",     "parent": null,     "pivot": [205, 252], "fill": 14,
+     "poly": [[178,250],[232,250],[232,282],[180,282]]},
+    {"name": "frontShin",  "bone": "fs",     "parent": "frontThigh", "pivot": [215, 282], "fill": 0,
+     "poly": [[172,280],[240,278],[262,365],[170,365]]},
+    {"name": "torso",      "bone": "t",      "parent": null,     "pivot": [172, 250], "fill": 40, "rest": true, "fillPoly": [[115,135],[225,135],[228,262],[115,262]]},
+    {"name": "backUpper",  "bone": "bu",     "parent": "torso",  "pivot": [125, 152], "fill": 10,
+     "poly": [[92,128],[160,128],[162,170],[135,178],[128,192],[92,194]]},
+    {"name": "backFore",   "bone": "bl",     "parent": "backUpper", "pivot": [112, 190], "fill": 0,
+     "poly": [[90,190],[128,188],[138,215],[140,242],[110,245],[88,225]]},
+    {"name": "head",       "bone": "h",      "parent": "torso",  "pivot": [185, 148], "fill": 0,
+     "poly": [[60,0],[240,0],[235,120],[210,140],[185,145],[160,140],[140,135],[110,135],[85,128],[70,110]]},
+    {"name": "frontUpper", "bone": "fu",     "parent": "torso",  "pivot": [210, 155], "fill": 10,
+     "poly": [[198,140],[228,138],[232,180],[226,196],[208,198],[200,175]]},
+    {"name": "frontFore",  "bone": "fl",     "parent": "frontUpper", "pivot": [218, 192], "fill": 0,
+     "poly": [[208,190],[226,180],[262,182],[275,160],[275,110],[380,110],[380,232],[262,240],[226,240],[208,215]]}
+  ]
+}

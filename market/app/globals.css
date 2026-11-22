@@ -1,0 +1,77 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@custom-variant dark (&:where(.dark, .dark *)); /* app is dark-only */
+
+@theme {
+  --color-sky-0: #0c0c0f;
+  --color-sky-1: #111115;
+  --color-sky-2: #2a2a33;
+  --color-ink: #050507;
+  --color-panel: #18181d;
+  --color-panel-2: #222228;
+  --color-cream: #f6ecd9;
+  --color-muted: #9a9aa8;
+  --color-ember: #ff8a3d;
+  --color-ember-hi: #ffb168;
+  --color-gold: #ffd166;
+  --color-teal: #3fc1b0;
+  --color-danger: #ff5d6c;
+  --color-up: #2fd47a;
+  --color-down: #ff6b6b;
+  --color-str: #ff7a59;
+  --color-dex: #ffd166;
+  --color-def: #6fa8ff;
+  --color-spd: #5be0a6;
+  /* shadcn tokens mapped onto the arena palette (text-muted stays ours; shadcn uses muted-foreground) */
+  --color-background: #111115;
+  --color-foreground: #f6ecd9;
+  --color-card: #18181d;
+  --color-card-foreground: #f6ecd9;
+  --color-popover: #18181d;
+  --color-popover-foreground: #f6ecd9;
+  --color-primary: #4f46e5;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #222228;
+  --color-secondary-foreground: #f6ecd9;
+  --color-accent: #222228;
+  --color-accent-foreground: #f6ecd9;
+  --color-destructive: #ff5d6c;
+  --color-border: #26262d;
+  --color-input: #26262d;
+  --color-ring: #6366f1;
+  --color-muted-foreground: #9a9aa8;
+  --font-display: var(--font-nunito), system-ui, sans-serif;
+  --font-body: var(--font-nunito), system-ui, sans-serif;
+  --shadow-drop: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-drop-sm: 0 1px 2px rgb(0 0 0 / 0.3);
+}
+
+html { background: var(--color-sky-0); color-scheme: dark; }
+body {
+  min-height: 100vh;
+  color: var(--color-cream);
+  font-family: var(--font-body);
+  background: var(--color-sky-0);
+  overflow-x: clip;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    var(--color-sky-0);
+}
+h1, h2, h3 { font-family: var(--font-display); font-weight: 800; line-height: 1.05; text-wrap: balance; }
+:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 3px; }
+input, select, textarea { min-width: 0; }
+
+@utility glow {
+  border: 1px solid rgb(255 255 255 / 0.06);
+}
+@utility btn-primary {
+  color: #fff;
+  background: #4f46e5;
+  border: 0;
+  box-shadow: none;
+}

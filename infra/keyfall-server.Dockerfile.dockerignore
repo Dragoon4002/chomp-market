@@ -1,0 +1,12 @@
+**
+!Cargo.toml
+!Cargo.lock
+!crates/**
+!games/brawler/sim/**
+!games/brawler/server/**
+!games/ribbon/sim/**
+!games/ribbon/server/**
+!games/keyfall/server/**
+!games/coinflip/server/**
+!games/keyfall/client/public/words.txt
+**/target

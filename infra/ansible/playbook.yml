@@ -1,0 +1,99 @@
+# -e role=server (brawler-server + agents) | role=clients (game client + market)
+- name: Deploy brawler box
+  hosts: all
+  become: true
+  vars:
+    repo_url: https://github.com/Dragoon4002/brawler-arena.git
+    repo_version: main
+    app_dir: /opt/brawler-arena
+    compose_files:
+      server: -f infra/compose.yml -f infra/compose.prod.yml
+      clients: -f infra/compose.clients.yml
+    compose: "docker compose {{ compose_files[role] }}"
+    # override with -e @secrets.yml (ansible-vault encrypted) or export in shell
+    contract_id: "{{ lookup('env', 'CONTRACT_ID') | default('v3.brawler-platform-5c8e2b.testnet', true) }}"
+    monsters_id: "{{ lookup('env', 'MONSTERS_ID') | default('v2.brawler-monsters-5c8e2b.testnet', true) }}"
+    referee_id: "{{ lookup('env', 'REFEREE_ID') | default('referee.v2.brawler-platform-5c8e2b.testnet', true) }}"
+    referee_key: "{{ lookup('env', 'REFEREE_KEY') }}"
+    merchant_keys: "{{ lookup('env', 'MERCHANT_KEYS') }}"
+    deb_arch: "{{ 'arm64' if ansible_facts.architecture == 'aarch64' else 'amd64' }}"
+
+  tasks:
+    - name: Require domain
+      ansible.builtin.assert:
+        that:
+          - domain is defined and domain | length > 0
+          - role is defined and role in compose_files
+
+    # cargo release build OOMs on 2G RAM without it
+    - name: Swapfile
+      ansible.builtin.shell: |
+        fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+        echo '/swapfile none swap sw 0 0' >> /etc/fstab
+      args:
+        creates: /swapfile
+
+    - name: Base packages
+      ansible.builtin.apt:
+        name: [ca-certificates, curl, git]
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Docker apt repo
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: deb
+        uris: https://download.docker.com/linux/ubuntu
+        suites: "{{ ansible_facts.distribution_release }}"
+        components: stable
+        architectures: "{{ deb_arch }}"
+        signed_by: https://download.docker.com/linux/ubuntu/gpg
+
+    - name: Docker engine + compose
+      ansible.builtin.apt:
+        name: [docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin, docker-compose-plugin]
+        update_cache: true
+
+    - name: Docker running
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Repo checkout
+      ansible.builtin.git:
+        repo: "{{ repo_url }}"
+        dest: "{{ app_dir }}"
+        version: "{{ repo_version }}"
+
+    - name: Server env
+      ansible.builtin.template:
+        src: env.j2
+        dest: "{{ app_dir }}/infra/.env"
+        mode: "0600"
+      no_log: true
+      when: role == 'server'
+
+    - name: Caddyfile
+      ansible.builtin.template:
+        src: "Caddyfile.{{ role }}.j2"
+        dest: "{{ app_dir }}/infra/Caddyfile"
+        mode: "0644"
+      notify: Restart caddy
+
+    - name: Compose up
+      ansible.builtin.command: "{{ compose }} up -d --no-build --remove-orphans"
+      args:
+        chdir: "{{ app_dir }}"
+      register: up
+      changed_when: up.stderr is search('Recreated|Created|Started')
+      tags: up
+
+  handlers:
+    # template swaps the file inode; the bind mount would keep serving the old one
+    - name: Restart caddy
+      ansible.builtin.command: "{{ compose }} restart caddy"
+      tags: up
+      args:
+        chdir: "{{ app_dir }}"
+      changed_when: true

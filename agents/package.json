@@ -1,0 +1,9 @@
+{
+  "name": "@xyz/agents",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --experimental-strip-types --no-warnings main.ts",
+    "test": "node --experimental-strip-types --no-warnings --test brain.test.ts pricing.test.ts"
+  }
+}

@@ -1,0 +1,8 @@
+**
+!package.json
+!package-lock.json
+!games/brawler/client/**
+!packages/platform/**
+**/node_modules
+**/.next
+**/.env*

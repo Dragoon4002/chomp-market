@@ -1,0 +1,412 @@
+{
+ "base": {
+  "str": 9,
+  "dex": 3,
+  "def": 5,
+  "spd": 5,
+  "hue": 10,
+  "accent": 20,
+  "horn": 1,
+  "tail": 1,
+  "pattern": 1,
+  "eye": 1,
+  "size": 100
+ },
+ "cases": [
+  {
+   "in": null,
+   "out": [],
+   "stats": {
+    "str": 9,
+    "dex": 3,
+    "def": 5,
+    "spd": 5,
+    "fx": 0
+   }
+  },
+  {
+   "in": "junk",
+   "out": [],
+   "stats": {
+    "str": 9,
+    "dex": 3,
+    "def": 5,
+    "spd": 5,
+    "fx": 0
+   }
+  },
+  {
+   "in": {
+    "kind": "Power",
+    "mag": 1
+   },
+   "out": [],
+   "stats": {
+    "str": 9,
+    "dex": 3,
+    "def": 5,
+    "spd": 5,
+    "fx": 0
+   }
+  },
+  {
+   "in": [
+    {
+     "kind": "Power",
+     "mag": 2
+    }
+   ],
+   "out": [
+    {
+     "kind": "Power",
+     "mag": 2
+    }
+   ],
+   "stats": {
+    "str": 11,
+    "dex": 3,
+    "def": 5,
+    "spd": 5,
+    "fx": 0
+   }
+  },
+  {
+   "in": [
+    {
+     "kind": "Power",
+     "mag": 5
+    }
+   ],
+   "out": [
+    {
+     "kind": "Power",
+     "mag": 2
+    }
+   ],
+   "stats": {
+    "str": 11,
+    "dex": 3,
+    "def": 5,
+    "spd": 5,
+    "fx": 0
+   }
+  },
+  {
+   "in": [
+    {
+     "kind": "Power",
+     "mag": 0
+    }
+   ],
+   "out": [
+    {
+     "kind": "Power",
+     "mag": 1
+    }
+   ],
+   "stats": {
+    "str": 10,
+    "dex": 3,
+    "def": 5,
+    "spd": 5,
+    "fx": 0
+   }
+  },
+  {
+   "in": [
+    {
+     "kind": "Power",
+     "mag": 2
+    },
+    {
+     "kind": "Power",
+     "mag": 1
+    }
+   ],
+   "out": [
+    {
+     "kind": "Power",
+     "mag": 2
+    }
+   ],
+   "stats": {
+    "str": 11,
+    "dex": 3,
+    "def": 5,
+    "spd": 5,
+    "fx": 0
+   }
+  },
+  {
+   "in": [
+    {
+     "kind": "Power",
+     "mag": 1
+    },
+    {
+     "kind": "Power",
+     "mag": 1
+    },
+    {
+     "kind": "Speed",
+     "mag": 1
+    }
+   ],
+   "out": [
+    {
+     "kind": "Power",
+     "mag": 1
+    },
+    {
+     "kind": "Power",
+     "mag": 1
+    },
+    {
+     "kind": "Speed",
+     "mag": 1
+    }
+   ],
+   "stats": {
+    "str": 11,
+    "dex": 3,
+    "def": 5,
+    "spd": 6,
+    "fx": 0
+   }
+  },
+  {
+   "in": [
+    {
+     "kind": "Speed",
+     "mag": 2
+    },
+    {
+     "kind": "Agility",
+     "mag": 2
+    },
+    {
+     "kind": "Agility",
+     "mag": 1
+    }
+   ],
+   "out": [
+    {
+     "kind": "Speed",
+     "mag": 2
+    },
+    {
+     "kind": "Agility",
+     "mag": 1
+    }
+   ],
+   "stats": {
+    "str": 9,
+    "dex": 4,
+    "def": 5,
+    "spd": 7,
+    "fx": 0
+   }
+  },
+  {
+   "in": [
+    {
+     "kind": "AirJump"
+    },
+    {
+     "kind": "AirJump",
+     "mag": 1
+    },
+    {
+     "kind": "Lifesteal",
+     "mag": 2
+    },
+    {
+     "kind": "QuickDodge",
+     "mag": 1
+    }
+   ],
+   "out": [
+    {
+     "kind": "AirJump",
+     "mag": 1
+    },
+    {
+     "kind": "Lifesteal",
+     "mag": 1
+    }
+   ],
+   "stats": {
+    "str": 9,
+    "dex": 3,
+    "def": 5,
+    "spd": 5,
+    "fx": 3
+   }
+  },
+  {
+   "in": [
+    {
+     "kind": "Fly",
+     "mag": 1
+    },
+    null,
+    7,
+    {
+     "kind": "power",
+     "mag": 1
+    },
+    {
+     "kind": "Speed"
+    },
+    {
+     "kind": "Speed",
+     "mag": "2"
+    },
+    {
+     "kind": "Durability",
+     "mag": 1.5
+    },
+    {
+     "kind": "Durability",
+     "mag": 1.4
+    }
+   ],
+   "out": [
+    {
+     "kind": "Speed",
+     "mag": 2
+    },
+    {
+     "kind": "Durability",
+     "mag": 1
+    }
+   ],
+   "stats": {
+    "str": 9,
+    "dex": 3,
+    "def": 6,
+    "spd": 7,
+    "fx": 0
+   }
+  },
+  {
+   "in": [
+    {
+     "kind": "Power",
+     "mag": 1
+    },
+    {
+     "kind": "QuickDodge"
+    },
+    {
+     "kind": "SecondWind"
+    },
+    {
+     "kind": "Speed",
+     "mag": 1
+    }
+   ],
+   "out": [
+    {
+     "kind": "Power",
+     "mag": 1
+    },
+    {
+     "kind": "QuickDodge",
+     "mag": 1
+    },
+    {
+     "kind": "SecondWind",
+     "mag": 1
+    }
+   ],
+   "stats": {
+    "str": 10,
+    "dex": 3,
+    "def": 5,
+    "spd": 5,
+    "fx": 12
+   }
+  },
+  {
+   "in": [
+    {
+     "kind": "SecondWind",
+     "mag": 9
+    },
+    {
+     "kind": "Speed",
+     "mag": null
+    },
+    {
+     "kind": "Agility",
+     "mag": [
+      2
+     ]
+    },
+    {
+     "kind": "Agility",
+     "mag": true
+    }
+   ],
+   "out": [
+    {
+     "kind": "SecondWind",
+     "mag": 1
+    },
+    {
+     "kind": "Speed",
+     "mag": 1
+    },
+    {
+     "kind": "Agility",
+     "mag": 1
+    }
+   ],
+   "stats": {
+    "str": 9,
+    "dex": 4,
+    "def": 5,
+    "spd": 6,
+    "fx": 8
+   }
+  },
+  {
+   "in": [
+    {
+     "kind": "Durability",
+     "mag": -3
+    },
+    {
+     "kind": "Durability",
+     "mag": 1
+    },
+    {
+     "kind": "Durability",
+     "mag": 1
+    },
+    {
+     "kind": "Speed",
+     "mag": 2
+    }
+   ],
+   "out": [
+    {
+     "kind": "Durability",
+     "mag": 1
+    },
+    {
+     "kind": "Durability",
+     "mag": 1
+    }
+   ],
+   "stats": {
+    "str": 9,
+    "dex": 3,
+    "def": 7,
+    "spd": 5,
+    "fx": 0
+   }
+  }
+ ]
+}

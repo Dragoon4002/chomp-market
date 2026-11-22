@@ -1,0 +1,27 @@
+node_modules
+dist
+.vercel
+/.claude/
+
+# art sources + sliced UI images (hosted externally, see NEXT_PUBLIC_ASSET_URL)
+/assets/
+/games/brawler/client/public/ui/
+.env*
+target/
+.next/
+out/
+
+# terraform state/vars, rendered Caddyfile, ansible secrets
+.terraform/
+*.tfstate*
+*.tfvars
+/infra/Caddyfile
+/infra/ansible/secrets.yml
+
+# local-only study copies of third-party game files (Windows build kept in private repo only)
+/reference/*
+!/reference/Windows/
+
+# remotion moveset video renders
+/games/brawler/video/out/
+/reference/
