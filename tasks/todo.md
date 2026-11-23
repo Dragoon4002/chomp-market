@@ -406,3 +406,33 @@ Already OK: @xyz/platform provider/calls, assets=null, direct report_result, NEP
 - curl: /g/2048/* 200 w/ right MIME + ACAO *; `..%2F` / `%2E%2E` / bad slug -> 404.
 - Headless Chrome: /play 2 playable + 3 soon cards; /play/2048 renders, bridge `ready` -> `session` w/ seed, frame origin `null`, parent.localStorage blocked, 0 console errors.
 - Not verified: docker image build, Godot/Unity export through /g route.
+
+# Market v2: hosted "Shop" look + Fractal/Ronin patterns (2026-11-24)
+Refs: hosted crawl (scratchpad crawl/hosted), Fractal crawl, `market/inspirations/ronin/*.png`. Data = `useAssets()` (demo until Solana port, `TODO(solana)` seams). Units -> lamports (1e9). No new deps.
+
+## Foundation (inline, shared files)
+- [x] Theme: hosted purple tokens (sky/ink/panel/cream/muted), Lilita One display + Nunito body, 3px ink borders, hard `shadow-drop`
+- [x] Shell: logo, nav (Market, Browse, Collections, Launchpad, Spin, Activity, Games, Create), compact search (not on home), cart icon w/ count, account pill menu (My stuff, Economy, Watchlist, Log out)
+- [x] MonsterArt -> hero sprites `/heroes/*.webp` hue-rotated (hosted recipe)
+- [x] assets.ts: lamports, `Machine` + `machines()/spin()`, base58-style demo accounts, `EXPLORER` link helper
+- [x] shared: `Tabs`, `Breadcrumb`, `Star` (watchlist, localStorage), `Skel` loaders, `Table`, cart store (localStorage) + `CartDrawer`
+
+## Pages (parallel agents, disjoint files)
+- [x] `/` home: hosted hero + search, 3 stat cards, Fortune Spin row, Trending collections (24h/7d/30d), Top skills big-rank row, Featured games, Recent sales strip, Top movers + Monsters for sale, Launchpad apply banner
+- [x] `/search` explore: filter sidebar w/ counts (type, kind, rarity, collection, price, monster stat mins), toolbar (sort, refresh, only mine, grid/list), URL state
+- [x] `/collections` Ronin table (All/Watchlist/Owned, 24H/7D/30D/All, sortable floor/volume/sales, 7D trend, supply, listed) ; `/collection?id=` Fractal hero + stats strip + info card + tabs Items/Activity/Presales
+- [x] `/item`: breadcrumb, star, attributes grid, chain facts + explorer, sales history table, add-to-cart
+- [x] `/launchpad` (All/Live/Upcoming/Completed + search, % minted bars, SOLD OUT ribbon, apply hero) ; `/launch?id=` detail (stat chips, start→end, mint panel, recent mints)
+- [x] `/spin` machines (lucky/latest drop strips, tabs, spin counts, out of stock) ; `/spin?id=` odds table + spin animation + result
+- [x] `/activity` global sales table (filters type/collection, time+price)
+- [x] `/me` tabs Inventory/Listings/Monsters/Watchlist/Proceeds
+- [x] `/create` presale preview card (draft→preview)
+
+## Verify
+- [x] `tsc` + `next build`; headless screenshots 1440 + 390 every route `?demo`; no h-scroll; Ctrl K
+
+## Review
+- All pages built on demo data. tsc clean, `next build` green (17 routes). 20 routes × 390/1440 checked by headless CDP: no h-scroll, no console errors, no overlays.
+- New: `/collections`, `/activity`, `/launchpad`, `/launch`, `/spin`; shared `lib/stats.ts` (volume/sales from price history), `lib/local.ts` (watchlist + cart), `components/presale-card.tsx`, `app/launchpad/drop-card.tsx`, `public/heroes/*.webp`.
+- Api additions: `machines()`, `drops()`, `spin()` (stub `TODO(solana)`: MagicBlock VRF). Units now lamports.
+- Gaps (need chain/indexer): buyer/seller in activity, per-monster sale history, tx explorer links on sales, offers/trait bids, cart as one tx (`TODO(solana)` in CartDrawer).

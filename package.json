@@ -12,6 +12,7 @@
   "scripts": {
     "test": "npm test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "games": "node --experimental-strip-types --no-warnings scripts/serve-games.ts"
   }
 }

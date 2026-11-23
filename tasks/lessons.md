@@ -18,3 +18,6 @@
 - Changing art file dimensions without cache-busting: user's browser mixed cached old PNGs with new scale -> tiny sky, smeared trails. Always version asset URLs (`?v=`) when files change in place.
 - Canvas renderers must clear every frame; never rely on a background sprite covering the canvas.
 - Headless screenshots use a fresh cache, so they can't catch this. After an asset swap, say "hard refresh" and bust caches anyway.
+
+## 2026-11-24 — wrong repo
+- User referenced `market/inspirations/...` that only existed in a sibling repo (solana/chomp-market); session cwd was near/brawler_arena. Rule: when the user names a path missing from cwd, `find` it across ~/programming and confirm the target repo before planning/building.

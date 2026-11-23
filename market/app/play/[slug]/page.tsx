@@ -2,16 +2,16 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { Maximize } from "lucide-react";
+import { ExternalLink, Maximize } from "lucide-react";
 import { Button } from "@/components/shadcn/button";
 import { Empty } from "@/components/ui";
 import { useAssets } from "@/lib/assets";
-import { GAMES, gameSrc } from "@/lib/games";
+import { GAMES, gameSrc, ownOrigin } from "@/lib/games";
 
-// Hosted builds share our origin, so they run without allow-same-origin (opaque origin: no access to portal storage/wallet).
-// ponytail: costs game saves (IndexedDB). Serve /g/* from a games subdomain, then add allow-same-origin.
+// Builds served via /g/* share our origin, so they run without allow-same-origin (opaque origin: no access to portal storage/wallet).
+// Set NEXT_PUBLIC_GAMES_ORIGIN (scripts/serve-games.ts) to give them their own origin and keep saves (IndexedDB).
 const SANDBOX = "allow-scripts allow-pointer-lock allow-downloads";
-// first-party apps on their own origin keep their own storage
+// apps on their own origin keep their own storage
 const SANDBOX_EXTERNAL = `${SANDBOX} allow-same-origin allow-forms allow-popups`;
 
 export default function Player() {
@@ -36,15 +36,16 @@ export default function Player() {
     return () => removeEventListener("message", on);
   }, [a.account]);
 
-  if (!g) return <Empty>No game “{slug}”. <Link href="/play" className="text-indigo-400 hover:underline">All games</Link></Empty>;
+  if (!g) return <Empty>No game “{slug}”. <Link href="/play" className="text-gold hover:underline">All games</Link></Empty>;
   if (g.soon) return <Empty>{g.name} is coming soon.</Empty>;
   return (
     <>
       <div className="mb-3 flex items-center gap-3">
         <h1 className="min-w-0 flex-1 truncate text-2xl">{g.name}</h1>
+        <Button asChild variant="outline" size="sm"><a href={gameSrc(g)} target="_blank" rel="noreferrer" title="Runs on its own server: keeps playing while the market reloads"><ExternalLink /> Open detached</a></Button>
         <Button variant="outline" size="sm" onClick={() => frame.current?.requestFullscreen()}><Maximize /> Fullscreen</Button>
       </div>
-      <iframe ref={frame} src={gameSrc(g)} title={g.name} sandbox={g.url ? SANDBOX_EXTERNAL : SANDBOX}
+      <iframe ref={frame} src={gameSrc(g)} title={g.name} sandbox={ownOrigin(g) ? SANDBOX_EXTERNAL : SANDBOX}
         allow="fullscreen; gamepad; autoplay" className="aspect-video w-full rounded-2xl border border-white/10 bg-black" />
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-semibold text-muted">
         <span>{a.account ? `Playing as ${a.account}` : "Playing free. Connect a wallet for staked matches."}</span>

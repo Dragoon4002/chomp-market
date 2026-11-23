@@ -1,16 +1,20 @@
-import type { Api, Collection, Kind, Monster, Point, Presale, Rarity, Skill, SkillListing } from "./assets";
+import type { Api, Collection, Drop, Kind, Machine, Monster, Point, Presale, Rarity, Skill, SkillListing } from "./assets";
 
-const ME = "demo.testnet";
-const N = (n: number) => (BigInt(Math.round(n * 1e4)) * 10n ** 20n).toString();
 const H = 3_600_000, NOW = Date.now();
 let seed = 7;
 const rnd = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const addr = () => Array.from({ length: 44 }, () => B58[Math.floor(rnd() * 58)]).join(""); // fake Solana pubkey
+const ME = addr();
+const N = (n: number) => String(Math.round(n * 1e9)); // lamports
 const wait = <T,>(v: T) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), 150));
 
 const collections: Collection[] = [
-  { id: 0, name: "Arena Basics", description: "Stat boosts every brawler starts with. Always in stock.", media: "", creator: "brawler-owner.testnet" },
-  { id: 1, name: "Ember Forge", description: "Hot-blooded techniques forged in the volcano pits.", media: "", creator: "ember-forge.testnet" },
+  { id: 0, name: "Arena Basics", description: "Stat boosts every brawler starts with. Always in stock.", media: "", creator: addr() },
+  { id: 1, name: "Ember Forge", description: "Hot-blooded techniques forged in the volcano pits.", media: "", creator: addr() },
   { id: 2, name: "Moonlit Moves", description: "Light-footed tricks for aerial fighters.", media: "", creator: ME },
+  { id: 3, name: "Tidal Arts", description: "Flowing counters from the reef dojo. Slippery and patient.", media: "", creator: addr() },
+  { id: 4, name: "Iron Hide", description: "Heavy plating and stubborn hearts for frontline brawlers.", media: "", creator: addr() },
 ];
 
 const S = (id: number, collection: number, name: string, kind: Kind, mag: number, rarity: Rarity, supply: number | null, minted: number, base: number): Skill & { base: number } => ({
@@ -31,6 +35,11 @@ const skills = [
   S(10, 2, "Shadow Slip", "QuickDodge", 1, "Rare", 150, 139, 1.15),
   S(11, 1, "Phoenix Heart", "SecondWind", 1, "Epic", 60, 0, 4.2),
   S(12, 1, "Ember Fury", "Power", 2, "Rare", 200, 137, 0.55),
+  S(13, 3, "Riptide Step", "Speed", 2, "Rare", 250, 212, 0.38),
+  S(14, 3, "Undertow", "QuickDodge", 1, "Epic", 90, 74, 1.9),
+  S(15, 4, "Bulwark", "Durability", 2, "Rare", 300, 251, 0.33),
+  S(16, 4, "Last Stand", "SecondWind", 1, "Epic", 70, 70, 2.75),
+  S(17, 4, "Iron Fist", "Power", 2, "Epic", 50, 12, 1.4),
 ];
 
 const history: Record<string, Point[]> = {};
@@ -38,15 +47,15 @@ const walk = (base: number, n: number, drift: number): Point[] => {
   let p = base * (1 - drift * 0.6);
   return Array.from({ length: n }, (_, i) => {
     p = Math.max(0.01, p * (1 + (rnd() - 0.5) * 0.12 + drift / n));
-    return [NOW - (n - i) * 1.5 * H, N(p)] as Point;
+    return [Math.round(NOW - ((n - i) / n) ** 2 * 30 * 24 * H), N(p)] as Point; // 30 days, denser near now
   });
 };
 for (const s of skills) {
-  history[`skill:${s.id}`] = s.rarity === "Common" ? walk(0.05, 12, 0).map(([t]) => [t, N(0.05)]) : s.minted === 0 ? [] : walk(s.base, 48, s.id % 3 === 1 ? -0.25 : 0.2 + (s.id % 4) * 0.12);
+  history[`skill:${s.id}`] = s.rarity === "Common" ? walk(0.05, 40, 0).map(([t]) => [t, N(0.05)]) : s.minted === 0 ? [] : walk(s.base, 160, s.id % 3 === 1 ? -0.25 : 0.2 + (s.id % 4) * 0.12);
 }
-history["monsters"] = walk(3.2, 48, 0.35);
+history["monsters"] = walk(3.2, 160, 0.35);
 
-const SELLERS = ["kitsune.testnet", "brawlmaster.testnet", "zed.testnet", "lumen.testnet", "oxide.testnet", "pip.testnet"];
+const SELLERS = Array.from({ length: 6 }, addr);
 const listings: SkillListing[] = [];
 for (const s of skills) {
   if (s.rarity === "Common" || s.minted === 0) continue;
@@ -60,6 +69,11 @@ const presales: Presale[] = [
   { id: 4, skill: 12, price: N(0.5), start_ms: NOW - 9 * H, end_ms: NOW + 15 * H, cap_total: 200, per_wallet: 2, sold: 137, allowlist: false, ended: false },
   { id: 5, skill: 11, price: N(1.5), start_ms: NOW + 6 * H, end_ms: NOW + 30 * H, cap_total: 60, per_wallet: 1, sold: 0, allowlist: true, ended: false },
   { id: 6, skill: 9, price: N(1.2), start_ms: NOW - 72 * H, end_ms: NOW - 48 * H, cap_total: 80, per_wallet: 2, sold: 80, allowlist: false, ended: true },
+  { id: 7, skill: 14, price: N(0.9), start_ms: NOW - 20 * H, end_ms: NOW + 52 * H, cap_total: 90, per_wallet: 3, sold: 74, allowlist: false, ended: false },
+  { id: 8, skill: 16, price: N(1.1), start_ms: NOW - 120 * H, end_ms: NOW - 96 * H, cap_total: 70, per_wallet: 2, sold: 70, allowlist: false, ended: true },
+  { id: 9, skill: 17, price: N(0.8), start_ms: NOW + 30 * H, end_ms: NOW + 78 * H, cap_total: 50, per_wallet: 1, sold: 0, allowlist: true, ended: false },
+  { id: 10, skill: 15, price: N(0.25), start_ms: NOW - 200 * H, end_ms: NOW - 150 * H, cap_total: 300, per_wallet: 5, sold: 251, allowlist: false, ended: true },
+  { id: 11, skill: 10, price: N(0.7), start_ms: NOW - 2 * H, end_ms: NOW + 22 * H, cap_total: 150, per_wallet: 2, sold: 139, allowlist: false, ended: false },
 ];
 const bought: Record<number, number> = { 4: 1 };
 
@@ -79,6 +93,21 @@ const monsters: Monster[] = NAMES.map((name, i) => {
 });
 const free: Record<number, number> = { 0: 2, 1: 1, 3: 3, 5: 1, 9: 1, 10: 2 };
 let owed = N(0.42);
+
+const machines: Machine[] = [
+  { id: 0, name: "Starter Capsule", series: "Gaming", price: N(0.08), spins: 4120, stock: null, vrf_free: true, pool: [[0, 30], [1, 30], [2, 30], [3, 30], [5, 6], [6, 6], [8, 1]].map(([skill, weight]) => ({ skill, weight })) },
+  { id: 1, name: "Ember Crucible", series: "Gaming", price: N(0.6), spins: 1388, stock: 612, pool: [[12, 50], [4, 25], [9, 4], [11, 1]].map(([skill, weight]) => ({ skill, weight })) },
+  { id: 2, name: "Moon Gacha", series: "Gaming", price: N(0.45), spins: 905, stock: 0, pool: [[10, 40], [7, 30], [8, 5]].map(([skill, weight]) => ({ skill, weight })) },
+  { id: 3, name: "Tidal Drum", series: "Others", price: N(0.35), spins: 2210, stock: 1290, vrf_free: true, pool: [[13, 60], [14, 8], [15, 32]].map(([skill, weight]) => ({ skill, weight })) },
+];
+const drops: Drop[] = Array.from({ length: 24 }, (_, i) => {
+  const m = machines[i % 3 === 2 ? 3 : i % 2];
+  const tot = m.pool.reduce((x, p) => x + p.weight, 0);
+  let r = rnd() * tot;
+  const pick = m.pool.find((p) => (r -= p.weight) < 0)?.skill ?? m.pool[0].skill;
+  const skill = i % 6 === 0 ? (m.pool.find((p) => skills[p.skill].rarity === "Epic")?.skill ?? pick) : pick; // seed a few lucky pulls
+  return { t: NOW - i * 7 * 60_000 - Math.floor(rnd() * 300_000), machine: m.id, skill, account: i % 5 === 0 ? ME : SELLERS[i % SELLERS.length], lucky: skills[skill].rarity === "Epic" };
+});
 
 const refresh = () => {
   for (const s of skills) {
@@ -167,4 +196,17 @@ export const demoApi: Api = {
   },
   createPresale: (p) => { presales.push({ ...p, id: presales.length, sold: 0, allowlist: !!p.allowlist?.length, ended: false }); return ok(); },
   withdrawOwed: () => { owed = "0"; return ok(); },
+  machines: () => wait(machines),
+  drops: () => wait(drops),
+  spin: (m) => {
+    const x = machines.find((y) => y.id === m.id)!;
+    if (x.stock === 0) return fail("Out of stock.");
+    const tot = x.pool.reduce((a, p) => a + p.weight, 0);
+    let r = Math.random() * tot;
+    const skill = x.pool.find((p) => (r -= p.weight) < 0)?.skill ?? x.pool[0].skill;
+    x.spins++; if (x.stock) x.stock--;
+    free[skill] = (free[skill] ?? 0) + 1;
+    drops.unshift({ t: Date.now(), machine: x.id, skill, account: ME, lucky: skills[skill].rarity === "Epic" });
+    return new Promise((res) => setTimeout(() => res({ skill }), 1800));
+  },
 };

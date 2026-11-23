@@ -36,6 +36,9 @@ export interface Monster {
 }
 export interface Holding { skill: number; free: number; listed: number; equipped: number }
 export type Point = [number, string];
+// Fortune spin: pay `price`, VRF picks a skill from `pool` by weight. stock = spins left (null = unlimited).
+export interface Machine { id: number; name: string; series: "Gaming" | "Others"; price: string; spins: number; stock: number | null; pool: { skill: number; weight: number }[]; vrf_free?: boolean }
+export interface Drop { t: number; machine: number; skill: number; account: string; lucky: boolean }
 export interface NewSkill { collection: number; name: string; kind: Kind; mag: number; rarity: Rarity; max_supply: number | null; royalty_bps: number; media: string }
 export interface NewPresale { skill: number; price: string; start_ms: number; end_ms: number | null; cap_total: number | null; per_wallet: number | null; allowlist: string[] | null }
 
@@ -65,9 +68,12 @@ export interface Api {
   createSkill(s: NewSkill): Promise<unknown>;
   createPresale(p: NewPresale): Promise<unknown>;
   withdrawOwed(): Promise<unknown>;
+  machines(): Promise<Machine[]>;
+  drops(): Promise<Drop[]>;
+  spin(m: Machine): Promise<{ skill: number }>;
 }
 
-// TODO(solana): wallet adapter + program/MagicBlock reads. Signed-out stub: views come back empty, calls throw.
+// TODO(solana): wallet adapter + program/MagicBlock reads; spin = MagicBlock VRF. Signed-out stub: views come back empty, calls throw.
 const SOON = () => Promise.reject(new Error("On-chain trading coming soon (Solana port in progress)"));
 const none = <T,>(v: T) => () => Promise.resolve(v);
 
@@ -77,18 +83,18 @@ export function useAssets(): Api {
     demo: false, account: null, signIn: () => alert("Wallet sign-in coming soon (Solana port in progress)"), signOut: () => {},
     skills: none([]), collections: none([]), presales: none([]), monsters: none([]), monster: none(null), history: none([]),
     skillListings: none([]), presaleBought: none(0), presaleAllowed: none(false), isCreator: none(false), holdings: none([]),
-    myMonsters: none([]), owed: none("0"),
+    myMonsters: none([]), owed: none("0"), machines: none([]), drops: none([]), spin: SOON,
     buySkill: SOON, listSkill: SOON, cancelSkillListing: SOON, buyPresale: SOON, buyMonster: SOON, listMonster: SOON,
     delistMonster: SOON, createCollection: SOON, createSkill: SOON, createPresale: SOON, withdrawOwed: SOON,
   };
 }
 
-// TODO(solana): 24-decimal base units kept from the old chain; switch to lamports (1e9).
-export const toYocto = (n: string | number) => {
+export const LAMPORTS = 1e9;
+export const toLamports = (n: string | number) => {
   const [i, f = ""] = String(n).split(".");
-  return (BigInt(i || "0") * 10n ** 24n + BigInt((f + "0".repeat(24)).slice(0, 24))).toString();
+  return (BigInt(i || "0") * 1_000_000_000n + BigInt((f + "000000000").slice(0, 9))).toString();
 };
-export const amount = (y: string | bigint | null | undefined) => (y == null ? 0 : Number(BigInt(y)) / 1e24);
+export const amount = (y: string | bigint | null | undefined) => (y == null ? 0 : Number(y) / LAMPORTS);
 export const fmt = (y: string | bigint | null | undefined) => {
   const n = amount(y);
   return n === 0 ? "0" : n < 0.01 ? n.toPrecision(2) : n.toFixed(n < 10 ? 3 : 2).replace(/\.?0+$/, "");
@@ -99,6 +105,13 @@ export const change24 = (h: Point[]) => {
   const cut = Date.now() - 86_400_000;
   const prev = amount([...h].reverse().find(([t]) => t <= cut)?.[1] ?? h[0][1]);
   return prev ? ((last - prev) / prev) * 100 : 0;
+};
+export const CLUSTER = process.env.NEXT_PUBLIC_SOLANA_CLUSTER || "devnet";
+export const explorer = (kind: "address" | "tx", id: string) => `https://explorer.solana.com/${kind}/${id}${CLUSTER === "mainnet-beta" ? "" : `?cluster=${CLUSTER}`}`;
+export const short = (a: string) => (a.length > 16 ? `${a.slice(0, 4)}…${a.slice(-4)}` : a);
+export const ago = (t: number) => {
+  const s = Math.max(1, Math.round((Date.now() - t) / 1000));
+  return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.round(s / 60)}m ago` : s < 86400 ? `${Math.round(s / 3600)}h ago` : `${Math.round(s / 86400)}d ago`;
 };
 export const skillKey = (id: number) => `skill:${id}`;
 export const KIND_LABEL: Record<Kind, string> = {
