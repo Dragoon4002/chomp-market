@@ -1,0 +1,12 @@
+{
+  "name": "Pet Den",
+  "desc": "Raise your monster in a private rollup. Feed, play, clean, sleep. Care streaks evolve it into a pricier NFT.",
+  "engine": "html5",
+  "thumb": "thumb.png",
+  "tags": ["pet", "casual", "collect", "private"],
+  "entry": "index.html",
+  "settle": "result",
+  "license": "MIT",
+  "source": "original",
+  "soon": false
+}

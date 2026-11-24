@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pet Den</title>
+<link rel="icon" href="data:,">
+<script src="/chomp-sdk.js"></script>
+<style>
+  html, body { margin: 0; min-height: 100%; background: #17131f; color: #eee; font: 15px system-ui, sans-serif; }
+  .wrap { max-width: 420px; margin: 0 auto; padding: 12px 16px 20px; box-sizing: border-box; }
+  header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  h1 { margin: 0; font-size: 22px; }
+  .chip { font-size: 11px; padding: 3px 8px; border-radius: 99px; background: #2a2338; color: #c9b8ff; white-space: nowrap; }
+  .sub { color: #aaa; font-size: 13px; margin: 2px 0 8px; }
+  #stage { position: relative; height: 230px; border-radius: 16px; background: radial-gradient(circle at 50% 70%, #3a2f52, #1d1828 70%); display: grid; place-items: center; overflow: hidden; }
+  #pet { image-rendering: auto; transition: width .4s, filter .4s; animation: bob 1.6s ease-in-out infinite; }
+  #stage.asleep #pet { animation: none; filter: brightness(.5) !important; transform: rotate(-12deg); }
+  #stage.sick #pet { animation-duration: .5s; }
+  #stage.dead #pet { opacity: .15; animation: none; }
+  #mood { position: absolute; top: 10px; right: 14px; font-size: 26px; }
+  #glow { position: absolute; bottom: 10px; left: 12px; font-size: 12px; color: #ffcf4a; }
+  @keyframes bob { 50% { transform: translateY(-8px); } }
+  .bars { display: grid; grid-template-columns: 70px 1fr 30px; gap: 5px 8px; align-items: center; margin: 12px 0; font-size: 13px; }
+  .bar { height: 10px; border-radius: 6px; background: #2a2338; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: #6bd18b; transition: width .3s; }
+  .bar i.mid { background: #ffcf4a; } .bar i.low { background: #ff5d6c; }
+  .num { text-align: right; color: #aaa; font-variant-numeric: tabular-nums; }
+  .acts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  button { padding: 12px 4px; border-radius: 12px; border: 0; background: #2f2a3a; color: #eee; font: 700 14px system-ui; cursor: pointer; touch-action: manipulation; }
+  button:disabled { opacity: .35; cursor: default; }
+  #evolve { width: 100%; margin-top: 8px; background: #c86bff; color: #000; }
+  #again { width: 100%; margin-top: 8px; background: #4fb3ff; color: #000; }
+  #msg { min-height: 20px; margin-top: 10px; color: #ffcf4a; font-size: 13px; text-align: center; }
+  #game { position: fixed; inset: 0; background: #17131fee; display: none; }
+  #game.on { display: block; }
+  #game .hud { position: absolute; top: 12px; width: 100%; text-align: center; font-weight: 700; }
+  #ball { position: absolute; width: 64px; height: 64px; margin: -32px; border: 0; border-radius: 50%; background: #ffcf4a; font-size: 32px; padding: 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1 id="name">Pet Den</h1><span class="chip" id="priv">🔒 private (PER)</span></header>
+  <div class="sub" id="sub">hatching…</div>
+  <div id="stage"><img id="pet" alt="your pet" width="110"><span id="mood"></span><span id="glow"></span></div>
+  <div class="bars" id="bars"></div>
+  <div class="acts">
+    <button data-act="feed">🍖 Feed</button>
+    <button data-act="play">🎾 Play</button>
+    <button data-act="clean">🧼 Clean</button>
+    <button data-act="sleep" id="sleep">💤 Sleep</button>
+  </div>
+  <button id="evolve" disabled>Evolve</button>
+  <button id="again" hidden>Hatch a new egg</button>
+  <div id="msg"></div>
+</div>
+<div id="game"><div class="hud" id="ghud"></div><button id="ball">🍬</button></div>
+<script type="module">
+import { lookOf, rng, isSick, valueOf, scoreOf, NEED, TIERS } from './sim.js';
+import { createChain } from './chain.js';
+
+const $ = (id) => document.getElementById(id);
+const msg = (t) => ($('msg').textContent = t);
+const chomp = (f, ...a) => { try { window.Chomp?.[f](...a); } catch (e) { console.warn(e); } };
+const hash = (str) => { let h = 2166136261; for (const c of String(str)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; };
+const now = () => Date.now(); // the only clock: chain.js maps it to whole ticks
+const ERR = { Dead: 'Your pet ran away…', Asleep: 'Shh, it is sleeping.', Tired: 'Too tired to play. Let it sleep.', NotReady: 'Needs more xp.', MaxTier: 'Already an Elder.', Sick: 'Too sick to evolve. Care for it first.' };
+
+let chain = null, session = null, started = false, plays = 0, busy = false;
+
+function render() {
+  const p = chain?.pet; if (!p) return;
+  const s = p.stats, look = lookOf(p.dna), sick = isSick(s);
+  $('name').textContent = look.name;
+  $('sub').textContent = `${TIERS[s.tier]} · age ${s.age} · ${look.species}`;
+  $('priv').textContent = p.delegated ? '🔒 private (PER)' : '🌐 on base';
+  const img = $('pet');
+  if (!img.src.endsWith(look.species + '.png')) img.src = `art/${look.species}.png`;
+  img.width = 100 + s.tier * 30;
+  img.style.filter = `hue-rotate(${look.hue}deg)` + (sick ? ' sepia(.6) hue-rotate(60deg)' : '');
+  $('stage').className = !s.alive ? 'dead' : s.asleep ? 'asleep' : sick ? 'sick' : '';
+  $('mood').textContent = !s.alive ? '💨' : s.asleep ? '💤' : sick ? '🤢' : s.joy > 70 ? '😄' : s.joy > 40 ? '🙂' : '😞';
+  const need = NEED[s.tier];
+  $('glow').textContent = `🔥 streak ${s.streak} (best ${s.best_streak}) · value ×${valueOf(s)}`;
+  const rows = [['Food', s.full], ['Joy', s.joy], ['Energy', s.energy], ['Hygiene', s.hygiene], ['Health', s.health], ['XP', need ? Math.min(100, Math.round(100 * s.xp / need)) : 100, need ? `${s.xp}/${need}` : 'max']];
+  $('bars').innerHTML = rows.map(([k, v, label]) => `<span>${k}</span><span class="bar"><i class="${v < 20 ? 'low' : v < 50 ? 'mid' : ''}" style="width:${v}%"></i></span><span class="num">${label ?? v}</span>`).join('');
+  document.querySelectorAll('[data-act]').forEach((b) => (b.disabled = !s.alive || (s.asleep && b.dataset.act !== 'sleep')));
+  $('sleep').textContent = s.asleep ? '☀️ Wake' : '💤 Sleep';
+  $('evolve').disabled = !s.alive || !need || s.xp < need || sick;
+  $('evolve').textContent = need ? `Evolve → ${TIERS[s.tier + 1]} (commit to chain)` : 'Max tier';
+  $('again').hidden = s.alive;
+}
+
+const finish = (reason) => {
+  const s = chain.pet.stats;
+  chomp('result', { winner: s.alive ? 'you' : 'none', score: scoreOf(s), tier: s.tier, reason });
+  started = false;
+};
+
+async function run(f) {
+  if (busy) return; busy = true;
+  try {
+    if (!started) { started = true; chomp('start'); }
+    const wasAlive = chain.pet.stats.alive;
+    await f();
+    if (wasAlive && !chain.pet.stats.alive) finish('ranaway');
+  } catch (e) { msg(ERR[e.message] || e.message); }
+  busy = false; render();
+}
+
+// ---- play mini-game: tap the candy, 5 s, max 10. Positions from the session seed. ----
+function miniGame() {
+  return new Promise((done) => {
+    const r = rng(session.seedU ^ Math.imul(++plays, 0x9e3779b9)), ball = $('ball');
+    let hits = 0;
+    const move = () => { ball.style.left = `${10 + r() * 80}%`; ball.style.top = `${20 + r() * 65}%`; };
+    const end = performance.now() + 5000;
+    $('game').className = 'on'; move();
+    ball.onpointerdown = (e) => { e.preventDefault(); if (++hits >= 10) stop(); else move(); };
+    const t = setInterval(() => { const left = Math.ceil((end - performance.now()) / 1000); $('ghud').textContent = `Tap the candy! ${hits}/10 · ${left}s`; if (left <= 0) stop(); }, 100);
+    function stop() { clearInterval(t); ball.onpointerdown = null; $('game').className = ''; done(hits); }
+  });
+}
+
+document.querySelectorAll('[data-act]').forEach((b) => (b.onclick = () => run(async () => {
+  const kind = b.dataset.act;
+  if (kind === 'play') {
+    if (chain.pet.stats.energy < 10) throw new Error('Tired');
+    const score = await miniGame();
+    await chain.care('play', score, now());
+    msg(`Played! ${score}/10 → +${score} xp`);
+  } else { await chain.care(kind, 0, now()); msg(''); }
+})));
+
+$('evolve').onclick = () => run(async () => {
+  await chain.evolve(now());
+  msg(`Evolved into ${TIERS[chain.pet.stats.tier]}! Tier committed to base.`);
+  finish('evolve');
+  await chain.delegate(); // back into the PER to keep caring
+});
+
+$('again').onclick = () => run(async () => {
+  await chain.createPet(hash(`${session.seed}:${chain.pet.dna}`), now());
+  await chain.delegate();
+  msg('A new egg hatched.');
+});
+
+async function boot(s) {
+  if (session) return;
+  session = { mode: 'free', ...s, seedU: /^\d+$/.test(String(s.seed)) ? Number(s.seed) >>> 0 : hash(s.seed) };
+  chain = createChain(session.wallet || 'local');
+  if (!chain.pet) { await chain.createPet(session.seedU, now()); await chain.delegate(); }
+  await chain.tick(now());
+  render();
+  // edge loop: real time -> ticks
+  setInterval(async () => { if (busy) return; const was = chain.pet.stats.alive; await chain.tick(now()); if (was && !chain.pet.stats.alive) finish('ranaway'); render(); }, 500);
+}
+
+window.petden = { get chain() { return chain; } }; // headless checks
+window.Chomp?.onSession(boot);
+chomp('ready');
+const qs = new URLSearchParams(location.search);
+setTimeout(() => boot({ mode: 'free', seed: qs.get('seed') ?? String((Math.random() * 2 ** 32) >>> 0) }), 300);
+</script>
+</body>
