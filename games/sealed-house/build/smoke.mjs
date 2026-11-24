@@ -8,12 +8,14 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Rng, contents, winner, split, buyback, resolveLot, baseSeed, value, EMPTY } from './game.js';
+import { Rng, contents, botBids, winner, split, buyback, resolveLot, baseSeed, value, EMPTY } from './game.js';
 
 // ---- 1. logic ----
 assert.equal(new Rng(0).next(), 0xe220a8397b1dcdafn, 'splitmix64 reference vector');
 const c = contents(42n); // same vector as logic.rs contents_parity_with_js
 assert.deepEqual([c.n, c.weight, c.glow, c.items], [6, 228, 2, [0x00, 0x00, 0x21, 0x01, 0x02, 0x31, EMPTY]]);
+for (const [s, want] of [[42n, [306, 226, 496]], [7n, [42, 44, 65]], [123456789n, [39, 41, 69]]]) // = logic.rs bots_parity_with_js
+  assert.deepEqual(botBids(contents(s), s), want, `bot bids parity ${s}`);
 assert.equal(winner([{ key: 'a', amount: 0 }], 1n), -1, 'zero bids never win');
 const t1 = [{ key: 'a0', amount: 9 }, { key: 'b1', amount: 9 }, { key: 'b2', amount: 3 }];
 const seen = new Set();

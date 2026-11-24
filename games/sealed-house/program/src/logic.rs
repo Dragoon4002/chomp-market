@@ -61,6 +61,30 @@ pub fn contents(seed: u64) -> Contents {
     c
 }
 
+/// House bots (build/game.js BOTS/estimate/botBids, same f64 op order so results match bit for bit).
+/// They read the same 3 hints a player sees. Their max is the lot's reserve price.
+pub const BOT_STYLE: [f64; 3] = [0.45, 0.6, 0.72];
+pub fn estimate(c: &Contents) -> f64 {
+    const AVG_HI: f64 = (100.0 * 90.0 + 40.0 * 300.0 + 10.0 * 1500.0) / 150.0; // mean value of a glowing item
+    const AVG_LO: f64 = (600.0 * 10.0 + 250.0 * 30.0) / 850.0;
+    const W_HI: f64 = 23.8;
+    const W_LO: f64 = 41.6;
+    let shown = c.items[0];
+    let shown_hi = (tier(shown) >= 2) as u8;
+    let hid_hi = (c.glow - shown_hi) as f64;
+    let rest = c.weight as f64 - (WEIGHT[tier(shown)] as f64 + 4.5) - hid_hi * W_HI;
+    let lo = (rest / W_LO).round().max(0.0);
+    value(shown) as f64 + hid_hi * AVG_HI + lo * AVG_LO
+}
+pub fn bot_bids(c: &Contents, contents_seed: u64) -> [u64; 3] {
+    let mut r = Rng::new(contents_seed ^ 0xb075);
+    let est = estimate(c);
+    BOT_STYLE.map(|s| {
+        let unit = (r.next() >> 11) as f64 / 9_007_199_254_740_992.0; // 2^53
+        (est * s * (0.7 + 0.6 * unit)).round().max(0.0) as u64
+    })
+}
+
 /// Highest revealed bid wins. Ties: sort tied bidders by key, pick one with `tie_seed`.
 /// `None` amount = not revealed (can't win).
 pub fn winner(bids: &[([u8; 32], Option<u64>)], tie_seed: u64) -> Option<usize> {
@@ -101,6 +125,14 @@ mod tests {
         assert_eq!(c.items, PARITY.3);
     }
     const PARITY: (u8, u16, u8, [u8; MAX_ITEMS]) = (6, 228, 2, [0x00, 0x00, 0x21, 0x01, 0x02, 0x31, EMPTY]);
+
+    #[test]
+    fn bots_parity_with_js() {
+        // same vectors as build/smoke.mjs: botBids(contents(s), s)
+        for (s, want) in [(42u64, [306, 226, 496]), (7, [42, 44, 65]), (123_456_789, [39, 41, 69])] {
+            assert_eq!(bot_bids(&contents(s), s), want, "seed {s}");
+        }
+    }
 
     #[test]
     fn contents_invariants() {

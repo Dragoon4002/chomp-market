@@ -276,7 +276,7 @@
 
       <div class="bidbar intro" id="intro">
         <h2>Bid blind. Open the vault. Cash out or keep it.</h2>
-        <p>Each vault's contents are rolled by <b>MagicBlock VRF</b>. Hints: its <b>weight</b> (junk is heavy, gems are light), <b>one item</b> face up, and how many items <b>glow</b> (rare+). Highest sealed bid wins and pays; ties go to VRF. Sell items back at <b>90%</b> or keep them. 5% of each winning bid goes to the house.</p>
+        <p>Each vault's contents are rolled by <b>MagicBlock VRF</b>. Hints: its <b>weight</b> (junk is heavy, gems are light), <b>one item</b> face up, and how many items <b>glow</b> (rare+). Highest sealed bid wins and pays; <span id="tieRule">ties go to VRF</span>. Sell items back at <b>90%</b> or keep them. 5% of each winning bid goes to the house.</p>
         <div class="row"><button class="seal" id="startBtn" disabled>🔓 Start</button><span class="mut" id="sessInfo">waiting for session…</span></div>
       </div>
 
@@ -338,8 +338,8 @@
   </aside>
 </main>
 <script type="module">
-import { START, LOTS, BOTS, contents, itemInfo, value, tier, split, buyback, estimate, baseSeed, tapeHash, EMPTY } from './game.js';
-import { mockChain } from './chain.js';
+import { START, LOTS, BOTS, itemInfo, value, tier, split, buyback, estimate, tapeHash, EMPTY } from './game.js';
+import { chainFor, onChain } from './chain.js';
 
 const $ = (id) => document.getElementById(id);
 const qs = new URLSearchParams(location.search);
@@ -353,6 +353,7 @@ function useSession(s) {
   if (session) return;
   session = { mode: 'free', ...s };
   $('sessInfo').textContent = `seed ${String(session.seed).slice(0, 12)} · ${session.mode}`;
+  if (onChain(session)) $('tieRule').textContent = 'the bots set the reserve: beat their best bid, ties go to the house';
   $('startBtn').disabled = false;
 }
 window.Chomp?.onSession(useSession);
@@ -366,7 +367,7 @@ const fmt = (n) => '💰' + num(n);
 const cap = (s) => s[0].toUpperCase() + s.slice(1);
 const NAMES = ['You', ...BOTS.map((b) => b.name)];
 const AV = ['art/bramdra.png', 'art/grodrasu.png', 'art/lortor.png', 'art/makvel.png'];
-const LOT_SECS = 30; // UI-only bid clock: on 0 it seals whatever is typed (empty = pass). Same path as the button, so tape = inputs.
+const LOT_SECS = 30; // bid clock (on chain: the lot's commit window, lot.secs): on 0 it seals whatever is typed (empty = pass). Same path as the button, so tape = inputs.
 
 function drawBidders() {
   $('bidders').innerHTML = NAMES.map((n, k) => `<div class="prow${k ? '' : ' me'}" id="bd${k}"><span class="av"><img src="${AV[k]}" alt=""><i></i></span><span class="pn">${n}<small>${k ? BOTS[k - 1].blurb : 'max ' + fmt(g ? g.bank : START)}</small></span><span class="st amt">In</span><span class="more" title="${k ? BOTS[k - 1].blurb + ' collector' : 'you'}">…</span></div>`).join('');
@@ -383,9 +384,8 @@ function setStep(n) { // 0 open, 1 locked, 2 settle, -1 idle
 // ---- bid clock ----
 let tmr;
 const showT = (t) => { $('mm').textContent = String(t / 60 | 0).padStart(2, '0'); $('ss').textContent = String(t % 60).padStart(2, '0'); $('timer').classList.toggle('hot', t > 0 && t <= 5); };
-function startTimer() {
+function startTimer(t = LOT_SECS) {
   clearInterval(tmr);
-  let t = LOT_SECS;
   showT(t); $('timer').classList.remove('closed'); $('timerLbl').textContent = 'Bidding Closes In';
   if (FAST) return;
   tmr = setInterval(() => { showT(--t); if (t <= 0) { clearInterval(tmr); if (!$('sealBtn').disabled) $('sealBtn').click(); } }, 1000);
@@ -393,7 +393,7 @@ function startTimer() {
 function stopTimer(label) { clearInterval(tmr); showT(0); $('timer').classList.add('closed'); $('timerLbl').textContent = label; }
 
 $('startBtn').onclick = () => {
-  chain = mockChain(baseSeed(session.seed));
+  chain = chainFor(session);
   g = { i: 0, bank: START, kept: [], bots: BOTS.map(() => START), hist: [] };
   $('intro').hidden = true;
   chomp('start');
@@ -401,8 +401,8 @@ $('startBtn').onclick = () => {
 };
 
 async function newLot() {
-  const [cs] = await chain.openLot(g.i);
-  g.lot = contents(cs);
+  $('lotNo').textContent = 'Rolling VRF…';
+  g.lot = await chain.openLot(g.i);
   $('lotNo').textContent = `Lot ${g.i + 1}/${LOTS}`;
   $('bank').textContent = num(g.bank);
   $('chest').src = 'art/chest.png?v=2';
@@ -419,7 +419,7 @@ async function newLot() {
   $('num').placeholder = 'Amount';
   $('commit').textContent = '';
   $('bidPanel').hidden = false; $('openPanel').hidden = true;
-  setBidUi(true); setStep(0); startTimer();
+  setBidUi(true); setStep(0); startTimer(g.lot.secs);
 }
 const setBidUi = (on) => ['num', 'upBtn', 'downBtn', 'sealBtn', 'passBtn'].forEach((id) => ($(id).disabled = !on));
 const bump = (d) => ($('num').value = Math.max(0, Math.min(g.bank, (Math.floor(Number($('num').value)) || 0) + d)));
@@ -430,7 +430,7 @@ $('passBtn').onclick = () => seal(0);
 
 async function seal(amount) {
   setBidUi(false); stopTimer('Bidding Locked'); setStep(1);
-  const c = await chain.commitBid(g.i, amount);
+  const c = await chain.commitBid(g.i, amount, g.bank);
   $('commit').textContent = `commitment ${c.commitment}`;
   const amt = (k) => $('bd' + k).querySelector('.amt');
   const lock = (k) => { amt(k).textContent = '🔒'; amt(k).classList.add('sealed'); };
@@ -490,7 +490,7 @@ $('nextBtn').onclick = async () => {
   const r = g.r, me = r.w === 0;
   if (me) {
     const mask = sellMask();
-    if (mask) g.bank += await chain.sellBack(r.lot, mask);
+    if (mask) try { g.bank += await chain.sellBack(r.lot, mask); } catch (e) { console.warn(e); g.keep |= mask; } // treasury low / rejected: items kept
     r.lot.items.forEach((it, k) => g.keep >> k & 1 && g.kept.push(it));
   }
   tape.push({ bid: r.bids[0].amount, keep: me ? g.keep : 0 });
@@ -537,6 +537,8 @@ document.querySelectorAll('.tab').forEach((b) => (b.onclick = () => showTab(b.da
 $('histBtn').onclick = () => showTab('history');
 setStep(-1);
 
+// chain txs fail loudly (rejected signature, VRF timeout): show it, reload retries
+addEventListener('unhandledrejection', (e) => { $('timerLbl').textContent = 'Chain error'; $('commit').textContent = '⚠ ' + String(e.reason?.message ?? e.reason).slice(0, 140) + ' · reload to retry'; });
 chomp('ready');
 </script>
 </body>

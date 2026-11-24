@@ -1,11 +1,11 @@
 //! Sealed House: sealed-bid auctions for VRF-filled collectible vaults.
-//! Base layer only. Bids are commit-reveal: sha256(amount_le ‖ salt ‖ bidder).
+//! Base layer only. Bids are commit-reveal: sha256(amount_le ‖ salt ‖ bidder ‖ lot).
 //! Escrow = a deposit >= the bid, so the deposit only leaks an upper bound (overfund to hide).
 use anchor_lang::prelude::*;
 use anchor_lang::system_program::{transfer, Transfer};
 use ephemeral_rollups_sdk::anchor::{vrf, vrf_callback};
 use ephemeral_rollups_sdk::vrf::{
-    consts::{program_identity_pubkey, DEFAULT_QUEUE, DEFAULT_TEST_QUEUE},
+    consts::{program_identity_pubkey, scoped_vrf_identity_const, DEFAULT_QUEUE, DEFAULT_TEST_QUEUE},
     instructions::{create_request_randomness_ix_const, RequestRandomnessParams},
     types::SerializableAccountMeta,
 };
@@ -13,11 +13,16 @@ use ephemeral_rollups_sdk::vrf::{
 pub mod logic;
 use logic::*;
 
-declare_id!("GEXuTjamghE5zQdgUiKUS6TZuizHbGW3jwCd2ceTh95M"); // placeholder, no keypair yet
+declare_id!("FGYiydgg6XWauRUq9eyMwHFuwJjG5TM2ndLNQVEJjfR4");
 
 pub const LAMPORTS_PER_COIN: u64 = 10_000; // 1 coin = 0.00001 SOL
 pub const MAX_BIDS: u16 = 16; // bounds settle's compute
+pub const MAX_WINDOW_SECS: i64 = 3600; // commit / reveal window cap
 const PROGRAM_IDENTITY: Pubkey = program_identity_pubkey(&crate::ID);
+/// Scoped VRF identity that signs fill_lot. Must be a const: the #[vrf_callback] default puts the
+/// derivation inside `address = ...`, which runs at runtime (software PDA derivation ≈1.1M CU, so the
+/// oracle's callback ran out of compute and the request expired).
+const VRF_IDENTITY: Pubkey = Pubkey::new_from_array(scoped_vrf_identity_const(&crate::ID).0);
 
 const PENDING: u8 = 0;
 const OPEN: u8 = 1;
@@ -35,9 +40,10 @@ pub mod sealed_house {
         pay(&ctx.accounts.system_program, &ctx.accounts.authority, &h.to_account_info(), fund)
     }
 
-    /// Opens a sealed lot and asks MagicBlock VRF for its contents.
+    /// Opens a sealed lot and asks MagicBlock VRF for its contents. Anyone can open one (payer
+    /// pays lot rent + the VRF fee), so a solo player opens their own lot.
     pub fn create_lot(ctx: Context<CreateLot>, commit_secs: i64, reveal_secs: i64, client_seed: u8) -> Result<()> {
-        require!(commit_secs > 0 && reveal_secs > 0, E::BadWindow);
+        require!((1..=MAX_WINDOW_SECS).contains(&commit_secs) && (1..=MAX_WINDOW_SECS).contains(&reveal_secs), E::BadWindow);
         let id = ctx.accounts.house.lots;
         ctx.accounts.house.lots += 1;
         let lot = &mut ctx.accounts.lot;
@@ -49,7 +55,7 @@ pub mod sealed_house {
         caller_seed[..8].copy_from_slice(&id.to_le_bytes()); // no grinding by picking the whole seed
         let ix = create_request_randomness_ix_const(
             RequestRandomnessParams {
-                payer: ctx.accounts.authority.key(),
+                payer: ctx.accounts.payer.key(),
                 oracle_queue: ctx.accounts.oracle_queue.key(),
                 callback_program_id: crate::ID,
                 callback_discriminator: instruction::FillLot::DISCRIMINATOR.to_vec(),
@@ -59,7 +65,7 @@ pub mod sealed_house {
             },
             PROGRAM_IDENTITY,
         );
-        ctx.accounts.invoke_signed_vrf(&ctx.accounts.authority.to_account_info(), &ix)?;
+        ctx.accounts.invoke_signed_vrf(&ctx.accounts.payer.to_account_info(), &ix)?;
         Ok(())
     }
 
@@ -67,7 +73,9 @@ pub mod sealed_house {
     pub fn fill_lot(ctx: Context<FillLot>, randomness: [u8; 32]) -> Result<()> {
         let lot = &mut ctx.accounts.lot;
         require!(lot.state == PENDING, E::BadState);
-        let c = contents(seed_of(&randomness, 0));
+        let seed = seed_of(&randomness, 0);
+        let c = contents(seed);
+        lot.bots = bot_bids(&c, seed);
         lot.items = c.items;
         lot.n = c.n;
         lot.weight = c.weight;
@@ -75,19 +83,23 @@ pub mod sealed_house {
         lot.shown = c.items[0];
         lot.tie_seed = seed_of(&randomness, 8);
         let now = Clock::get()?.unix_timestamp;
-        lot.commit_end = now + lot.commit_secs;
-        lot.reveal_end = lot.commit_end + lot.reveal_secs;
+        lot.commit_end = now.checked_add(lot.commit_secs).ok_or(E::BadWindow)?;
+        lot.reveal_end = lot.commit_end.checked_add(lot.reveal_secs).ok_or(E::BadWindow)?;
         lot.state = OPEN;
-        // ponytail: items stay readable on-chain (anyone can deserialize `items`); hide them
-        // in PER or store only a hash + reveal at settle if sniping from RPC becomes a problem.
+        // ponytail: items and bot bids stay readable on-chain (anyone can deserialize the Lot);
+        // a sniper reads them, bids reserve+1 only on lots where 90% buyback > 95% of that bid, and sell_back
+        // drains the treasury lot after lot. Hide them in PER, or store a hash + reveal at settle.
         Ok(())
     }
 
     /// Sealed bid: stores the commitment and escrows `deposit` lamports (>= the real bid).
+    /// deposit >= reserve (max bot bid) and is forfeited if never revealed, so commit spam
+    /// (filling the lot / blocking early settle) costs the spammer `reserve` per bid.
     pub fn commit_bid(ctx: Context<CommitBid>, commitment: [u8; 32], deposit: u64) -> Result<()> {
         let lot = &mut ctx.accounts.lot;
         require!(lot.state == OPEN, E::BadState);
         require!(Clock::get()?.unix_timestamp < lot.commit_end, E::Closed);
+        require!(deposit > 0 && deposit >= reserve(lot), E::Underfunded);
         require!(lot.bids < MAX_BIDS, E::Full);
         lot.bids += 1;
         let b = &mut ctx.accounts.bid;
@@ -99,26 +111,29 @@ pub mod sealed_house {
     }
 
     pub fn reveal_bid(ctx: Context<RevealBid>, amount: u64, salt: [u8; 32]) -> Result<()> {
-        let lot = &ctx.accounts.lot;
+        let lot = &mut ctx.accounts.lot;
         let now = Clock::get()?.unix_timestamp;
         require!(lot.state == OPEN && now >= lot.commit_end && now < lot.reveal_end, E::Closed);
         let b = &mut ctx.accounts.bid;
         require!(!b.revealed, E::BadState);
-        require!(commitment(amount, &salt, &b.bidder) == b.commitment, E::BadReveal);
+        require!(commitment(amount, &salt, &b.bidder, &b.lot) == b.commitment, E::BadReveal);
         require!(amount <= b.deposit, E::Underfunded);
         b.amount = amount;
         b.revealed = true;
+        lot.revealed += 1;
         Ok(())
     }
 
-    /// Permissionless crank after the reveal window.
+    /// Permissionless crank after the reveal window, or as soon as every bid is revealed
+    /// (then the result is final: commits closed at commit_end). Solo play sends reveal + settle in one tx.
     /// remaining_accounts = every Bid of this lot followed by its bidder: [bid0, bidder0, bid1, bidder1, ...].
     /// Winner pays their bid (95% treasury, 5% fee vault); everyone else is refunded;
     /// unrevealed deposits are forfeited to the fee vault. All Bid accounts are closed.
     pub fn settle<'info>(ctx: Context<'info, Settle<'info>>) -> Result<()> {
         let lot = &mut ctx.accounts.lot;
         require!(lot.state == OPEN, E::BadState);
-        require!(Clock::get()?.unix_timestamp >= lot.reveal_end, E::NotYet);
+        let now = Clock::get()?.unix_timestamp;
+        require!(now >= lot.reveal_end || (now >= lot.commit_end && lot.revealed == lot.bids), E::NotYet);
         let ra = ctx.remaining_accounts;
         require!(ra.len() == 2 * lot.bids as usize, E::MissingBids);
         let mut bids: Vec<(AccountInfo<'info>, AccountInfo<'info>, Bid)> = Vec::with_capacity(lot.bids as usize);
@@ -134,7 +149,9 @@ pub mod sealed_house {
         }
         let view: Vec<([u8; 32], Option<u64>)> =
             bids.iter().map(|(_, _, b)| (b.bidder.to_bytes(), b.revealed.then_some(b.amount))).collect();
-        let w = winner(&view, lot.tie_seed);
+        // The house bots are one more sealed bidder: the top player bid must beat their best (ties go to the house).
+        let reserve = reserve(lot);
+        let w = winner(&view, lot.tie_seed).filter(|&i| bids[i].2.amount > reserve);
         let house = ctx.accounts.house.to_account_info();
         let fee_vault = ctx.accounts.fee_vault.to_account_info();
         for (i, (acc, who, b)) in bids.iter().enumerate() {
@@ -170,9 +187,15 @@ pub mod sealed_house {
     }
 }
 
-pub fn commitment(amount: u64, salt: &[u8; 32], bidder: &Pubkey) -> [u8; 32] {
-    solana_sha256_hasher::hashv(&[&amount.to_le_bytes(), salt, bidder.as_ref()]).to_bytes()
+pub fn commitment(amount: u64, salt: &[u8; 32], bidder: &Pubkey, lot: &Pubkey) -> [u8; 32] {
+    solana_sha256_hasher::hashv(&[&amount.to_le_bytes(), salt, bidder.as_ref(), lot.as_ref()]).to_bytes()
 }
+
+/// House bots' best bid in lamports: a player must beat it to win, and deposit at least it to bid.
+fn reserve(lot: &Lot) -> u64 { lot.bots.iter().max().unwrap() * LAMPORTS_PER_COIN }
+
+/// Devnet queue only; the local test queue needs `--features test-queue`.
+fn queue_ok(k: &Pubkey) -> bool { *k == DEFAULT_QUEUE || (cfg!(feature = "test-queue") && *k == DEFAULT_TEST_QUEUE) }
 
 fn pay<'info>(sys: &Program<'info, System>, from: &Signer<'info>, to: &AccountInfo<'info>, lamports: u64) -> Result<()> {
     if lamports == 0 { return Ok(()); }
@@ -214,6 +237,9 @@ pub struct Lot {
     pub winner: Pubkey,
     pub price: u64,
     pub sold: u8,
+    pub revealed: u16,
+    /// house bot bids in coins (BOTS order); max = reserve
+    pub bots: [u64; 3],
 }
 
 #[account]
@@ -242,13 +268,13 @@ pub struct InitHouse<'info> {
 #[derive(Accounts)]
 pub struct CreateLot<'info> {
     #[account(mut)]
-    pub authority: Signer<'info>,
-    #[account(mut, seeds = [b"house"], bump, has_one = authority)]
+    pub payer: Signer<'info>,
+    #[account(mut, seeds = [b"house"], bump)]
     pub house: Account<'info, House>,
-    #[account(init, payer = authority, space = 8 + Lot::INIT_SPACE, seeds = [b"lot".as_ref(), &house.lots.to_le_bytes()], bump)]
+    #[account(init, payer = payer, space = 8 + Lot::INIT_SPACE, seeds = [b"lot".as_ref(), &house.lots.to_le_bytes()], bump)]
     pub lot: Account<'info, Lot>,
-    /// CHECK: VRF oracle queue (devnet or local test queue)
-    #[account(mut, constraint = oracle_queue.key() == DEFAULT_QUEUE || oracle_queue.key() == DEFAULT_TEST_QUEUE)]
+    /// CHECK: VRF oracle queue (devnet; local test queue with feature test-queue)
+    #[account(mut, constraint = queue_ok(&oracle_queue.key()))]
     pub oracle_queue: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
@@ -256,6 +282,8 @@ pub struct CreateLot<'info> {
 #[vrf_callback]
 #[derive(Accounts)]
 pub struct FillLot<'info> {
+    #[account(address = VRF_IDENTITY)]
+    pub vrf_program_identity: Signer<'info>,
     #[account(mut)]
     pub lot: Account<'info, Lot>,
 }
@@ -274,6 +302,7 @@ pub struct CommitBid<'info> {
 #[derive(Accounts)]
 pub struct RevealBid<'info> {
     pub bidder: Signer<'info>,
+    #[account(mut)]
     pub lot: Account<'info, Lot>,
     #[account(mut, seeds = [b"bid", lot.key().as_ref(), bidder.key().as_ref()], bump, has_one = lot, has_one = bidder)]
     pub bid: Account<'info, Bid>,
@@ -322,12 +351,26 @@ pub enum E {
 mod tests {
     use super::*;
     #[test]
-    fn commitment_binds_amount_salt_bidder() {
-        let (a, b) = (Pubkey::new_from_array([1; 32]), Pubkey::new_from_array([2; 32]));
-        let c = commitment(500, &[7; 32], &a);
-        assert_eq!(c, commitment(500, &[7; 32], &a));
-        assert_ne!(c, commitment(501, &[7; 32], &a));
-        assert_ne!(c, commitment(500, &[8; 32], &a));
-        assert_ne!(c, commitment(500, &[7; 32], &b), "a copied commitment can't be revealed by someone else");
+    fn vrf_identity_is_scoped_pda() {
+        let vrf = Pubkey::new_from_array(ephemeral_rollups_sdk::vrf::consts::VRF_PROGRAM_ID.to_bytes());
+        assert_eq!(VRF_IDENTITY, Pubkey::find_program_address(&[b"identity", crate::ID.as_ref()], &vrf).0);
+    }
+
+    #[test]
+    fn commitment_binds_amount_salt_bidder_lot() {
+        let [a, b, l, m] = [[1; 32], [2; 32], [3; 32], [4; 32]].map(Pubkey::new_from_array);
+        let c = commitment(500, &[7; 32], &a, &l);
+        assert_eq!(c, commitment(500, &[7; 32], &a, &l));
+        assert_ne!(c, commitment(501, &[7; 32], &a, &l));
+        assert_ne!(c, commitment(500, &[8; 32], &a, &l));
+        assert_ne!(c, commitment(500, &[7; 32], &b, &l), "a copied commitment can't be revealed by someone else");
+        assert_ne!(c, commitment(500, &[7; 32], &a, &m), "a commitment can't be replayed on another lot");
+    }
+
+    #[test]
+    fn only_devnet_queue_without_feature() {
+        assert!(queue_ok(&DEFAULT_QUEUE));
+        assert_eq!(queue_ok(&DEFAULT_TEST_QUEUE), cfg!(feature = "test-queue"));
+        assert!(!queue_ok(&Pubkey::new_unique()));
     }
 }
