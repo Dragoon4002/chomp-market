@@ -1,14 +1,12 @@
-// Brawler's single chain seam. Calls go through @xyz/platform stubs (throw SOON) unless DEMO.
-// TODO(solana): back useArena/useSignMatch/useWallet with the Solana program + MagicBlock ER/VRF.
-import { fmt, PLATFORM_ID, toYocto, UNIT, useBalance, useWallet as useBaseWallet, usePlatform } from '@xyz/platform';
+// Brawler's single chain seam: chomp program escrows 1v1 stakes, brawler server referee settles (no client settle).
+// Spectator betting, tournaments, claims and the old platform balance have no Solana backend yet: they reject with SOON.
+import { bs58, fmt, ix, randomMatchId, readMatch, requestFaucet, SOON, toLamports, UNIT, useBalance, useWallet as useBaseWallet, usePlatform } from '@xyz/platform';
 import { DEMO, DEMO_ACCOUNT, DEMO_BALANCE, demoArena } from './demo.ts';
+import { remember } from './stakes.ts';
 
-export { fmt, toYocto, UNIT, usePlatform };
-export const CONTRACT_ID = PLATFORM_ID;
+export { fmt, requestFaucet, toLamports, UNIT, usePlatform };
+export const toYocto = toLamports; // old name, amounts are lamports
 export const GAME = 'brawler';
-// TODO(solana): compute budget per ix; values are passed through to the stub unused.
-const GAS = '0', GAS_X = '0', GAS_T = '0';
-const ONE_YOCTO = '1';
 
 export interface MatchView {
   id: number; game: string; host: string; guest: string | null; stake: string; bettable: boolean;
@@ -33,80 +31,67 @@ export interface Limits { owner: string; fee_bps: number; max_bet: string; unit:
 export interface Attestation { match_id: number; winner: number | null; kos: [number, number]; tape_hash: string; signature: string }
 
 export const lowBalance = (have: string | null, need: string) =>
-  `Not enough balance (${fmt(have ?? '0')} of ${fmt(need)} ${UNIT}). Top up in Account.`;
+  `Not enough SOL (${fmt(have ?? '0')} of ${fmt(need)} ${UNIT}). Get devnet SOL in Account.`;
 
-// TODO(solana): platform program ixs (matches, order book, tournaments) — method names kept from the old contract.
+const off = (..._: unknown[]): Promise<never> => Promise.reject(new Error(SOON));
 export function useArena() {
   const p = usePlatform();
   if (DEMO) return demoArena;
-  const { call, view } = p;
   // dev-only ?as=<account>: play without a wallet (browser tests); compiled out of production builds
   const account = (process.env.NODE_ENV === 'development' && new URLSearchParams(location.search).get('as')) || p.w.signedAccountId;
   // throw before wallet opens if balance short
-  const need = async (yocto: string) => {
-    if (BigInt(yocto) === 0n || !account) return;
-    const have = await p.balanceOf(account);
-    if (BigInt(have) < BigInt(yocto)) throw new Error(lowBalance(have, yocto));
+  const need = async (lamports: string) => {
+    if (BigInt(lamports) === 0n || !account) return;
+    // wallet read (portal bridge retries 429s); a failed read skips the check, the tx itself still fails if short
+    const have = await p.w.getBalance(account).then(String, () => null);
+    if (have !== null && BigInt(have) < BigInt(lamports)) throw new Error(lowBalance(have, lamports));
   };
+  const send = (i: Parameters<typeof p.w.sendIxs>[0][number]) => p.w.sendIxs([i]);
   return {
-    ready: !!CONTRACT_ID,
+    ready: true,
     account,
     signIn: p.w.signIn,
-    // null = monster lock failed, stake refunded
-    createMatch: async (bettable: boolean, stakeYocto: string, monsterId?: string): Promise<number | null> => {
-      await need(stakeYocto);
-      const r = await call('create_match', { game: GAME, stake: stakeYocto, bettable, monster_id: monsterId ?? null }, ONE_YOCTO, monsterId ? GAS_X : GAS);
-      return r == null ? null : Number(r);
+    // monsterId ignored: monster NFTs are not on Solana yet
+    createMatch: async (_bettable: boolean, stake: string, _monsterId?: string): Promise<number | null> => {
+      await need(stake);
+      const id = randomMatchId();
+      remember(GAME, Number(id)); // before send: a tab closed mid-confirm still finds the stake (Funds > Reclaim)
+      await send(ix.openMatch(account, GAME, id, stake));
+      return Number(id);
     },
-    joinMatch: async (id: number, stakeYocto: string, monsterId?: string) => {
-      await need(stakeYocto);
-      return call('join_match', { match_id: id, monster_id: monsterId ?? null }, ONE_YOCTO, monsterId ? GAS_X : GAS);
+    joinMatch: async (id: number, stake: string, _monsterId?: string) => {
+      const m = await readMatch(GAME, id);
+      if (!m || m.b) throw new Error('That staked seat is already taken or the match closed.');
+      await need(String(m.stake)); // chain stake wins over what the room advertised
+      if (String(m.stake) !== stake) throw new Error(`Room stake changed to ${fmt(m.stake)} ${UNIT}; reopen the invite.`);
+      remember(GAME, id);
+      await send(ix.joinMatch(account, GAME, id));
+      return true;
     },
-    listTournaments: (from = 0, limit = 30) => view<TournamentView[]>('list_tournaments', { from, limit, game: GAME }),
-    getTournament: (id: number) => view<TournamentView | null>('get_tournament', { id }),
-    createTournament: async (size: number, feeYocto: string, bettable: boolean) =>
-      Number(await call('create_tournament', { game: GAME, size, entry_fee: feeYocto, bettable }, '1')),
-    enterTournament: async (id: number, monsterId: string, feeYocto: string) => { await need(feeYocto); return call('enter_tournament', { id, monster_id: monsterId }, ONE_YOCTO, GAS_T); },
-    claimTournament: (id: number) => call('claim_tournament', { id }),
-    cancelTournament: (id: number) => call('cancel_tournament', { id }),
-    cancelMatch: (id: number) => call('cancel_match', { match_id: id }),
-    placeOrder: async (id: number, side: number, priceBps: number, qty: number) => {
-      await need((BigInt(priceBps) * BigInt(qty) * 10n ** 18n).toString());
-      return call('place_order', { match_id: id, side, price_bps: priceBps, qty }, ONE_YOCTO, GAS_X) as Promise<{ id: number | null; filled: number; cost: string }>;
-    },
-    cancelOrder: (id: number, orderId: number) => call('cancel_order', { match_id: id, order_id: orderId }),
-    settle: (a: Attestation) => call('settle', { ...a }, '0', GAS_X),
-    getBook: (id: number) => view<Book>('get_book', { match_id: id }),
-    getOrders: (id: number, account: string) => view<OrderView[]>('get_orders', { match_id: id, account_id: account }),
-    getFills: (id: number) => view<FillView[]>('get_fills', { match_id: id, limit: 6 }),
-    claim: (id: number) => call('claim', { match_id: id }),
-    expire: (id: number) => call('expire', { match_id: id }),
-    getMatch: (id: number) => view<MatchView | null>('get_match', { match_id: id }),
-    getPosition: (id: number, account: string) => view<PositionView | null>('get_position', { match_id: id, account_id: account }),
-    getPrices: (id: number) => view<[number, number][]>('get_prices', { match_id: id }),
-    config: () => view<Limits>('config'),
-    claimable: (id: number, account: string) => view<string>('claimable', { match_id: id, account_id: account }),
-    listMatches: (from = 0, limit = 50) => view<MatchView[]>('list_matches', { from, limit, game: GAME }),
+    cancelMatch: (id: number) => send(ix.cancel(account, GAME, id, account, null)), // host, seat still open
+    getMatch: async (_id: number): Promise<MatchView | null> => null, // ponytail: no reader needs the chain view now (referee settles)
+    listMatches: async (_from = 0, _limit = 50): Promise<MatchView[]> => [], // ponytail: no match index on Solana yet; history comes from the server
+    listTournaments: off, getTournament: off, createTournament: off, enterTournament: off, claimTournament: off, cancelTournament: off,
+    placeOrder: off, cancelOrder: off, settle: off, getBook: off, getFills: off, claim: off, expire: off,
+    getPrices: off, config: off,
+    getPosition: off as (id: number, account: string) => Promise<PositionView | null>,
+    getOrders: off as (id: number, account: string) => Promise<OrderView[]>,
+    claimable: off as (id: number, account: string) => Promise<string>,
   };
 }
 
-// Signed seat proof for game server (server verifies in crates/chain). undefined in demo.
-// TODO(solana): ed25519 signMessage from the wallet adapter.
-export type MatchAuth = { publicKey: string; signature: string };
-export type SignMatch = (matchId: number, nonce: string) => Promise<MatchAuth>;
+// Signed seat proof for the game server: base58 ed25519 over `chomp:brawler:<matchId>:<hello.nonce>`. undefined in demo.
+export type SignMatch = (matchId: number, nonce: string) => Promise<string>;
 export function useSignMatch(): SignMatch | undefined {
   const w = useBaseWallet();
   if (DEMO) return undefined;
-  return async (matchId, nonce) => {
-    const s = await w.signMessage({ message: `brawler-arena:${matchId}`, recipient: CONTRACT_ID, nonce: Uint8Array.from(atob(nonce), (c) => c.charCodeAt(0)) });
-    return { publicKey: String(s.publicKey), signature: String(s.signature) };
-  };
+  return async (matchId, nonce) => bs58.encode(await w.signBytes(new TextEncoder().encode(`chomp:${GAME}:${matchId}:${nonce}`)));
 }
 
 export function useWallet() {
   const w = useBaseWallet();
   if (!DEMO) return w;
-  return { ...w, loading: false, signedAccountId: DEMO_ACCOUNT, network: 'demo', getBalance: async () => 12_345n * 10n ** 21n, signIn: async () => {}, signOut: async () => alert('Demo: wallet disconnected') };
+  return { ...w, loading: false, signedAccountId: DEMO_ACCOUNT, network: 'demo', getBalance: async () => 12_345n * 10n ** 6n, signIn: async () => {}, signOut: async () => alert('Demo: wallet disconnected') };
 }
 
 export function useUnifiedBalance() {

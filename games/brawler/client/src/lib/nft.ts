@@ -1,10 +1,9 @@
-import { toYocto, useWallet } from '@xyz/platform';
+import { SOON } from '@xyz/platform';
 import { sanitize, sanitizeSkills, SKILL_KINDS, type Monster, type Skill, type SkillKind } from './genes.ts';
 import { DEMO, demoMonsters } from './demo.ts';
 
 export const MONSTERS_ID: string = process.env.NEXT_PUBLIC_MONSTERS_ID ?? '';
-export const MARKET_URL: string = process.env.NEXT_PUBLIC_MARKET_URL ?? 'http://localhost:3100';
-const GAS = '0', GAS_X = '0';
+export const MARKET_URL: string = process.env.NEXT_PUBLIC_MARKET_URL ?? '/';
 
 // Contract JSON (see tasks/economy-spec.md)
 export interface MonsterView {
@@ -72,57 +71,13 @@ export interface MonstersApi {
   equip(id: string, skillIds: number[]): Promise<unknown>; // replaces the whole loadout
 }
 
-// TODO(solana): monster NFTs + skill tokens (Metaplex/program); every call hits the platform stub until then.
+// Monster NFTs + skill tokens have no Solana program yet: reads are empty (local monsters only), writes reject with SOON.
+const off = (..._: unknown[]): Promise<never> => Promise.reject(new Error(SOON));
+const NFT_OFF: MonstersApi = {
+  mine: async () => [], get: async () => null, history: async () => [], startersClaimed: async () => true,
+  listings: async () => [], rentOffers: async () => [], owed: async () => '0', skillTypes: async () => [], skills: async () => [],
+  hatchStarters: off, breed: off, list: off, delist: off, buy: off, offerRent: off, cancelRent: off, rent: off, config: off, withdrawOwed: off, equip: off,
+};
 export function useMonsters(): MonstersApi {
-  const w = useWallet();
-  if (DEMO) return demoMonsters;
-  const call = (method: string, args: Record<string, unknown>, deposit = '0', gas = GAS) =>
-    w.callFunction({ contractId: MONSTERS_ID, method, args, gas, deposit });
-  const view = <T,>(method: string, args: Record<string, unknown> = {}) =>
-    w.viewFunction({ contractId: MONSTERS_ID, method, args }) as Promise<T>;
-  const views = async (method: string, args: Record<string, unknown>) => (await view<MonsterView[]>(method, args)).map(toMonster);
-  const config = () => view<ConfigView>('config');
-  const skillTypes = async () => {
-    const all: unknown[] = [];
-    for (let from = 0; ; from += 50) {
-      const page = await view<unknown[]>('skill_types', { from, limit: 50 });
-      all.push(...page);
-      if (page.length < 50) return all.map(toSkillType).filter((t): t is SkillType => !!t);
-    }
-  };
-  return {
-    mine: async () => {
-      const me = w.signedAccountId;
-      if (!me) return [];
-      const [own, rented] = await Promise.all([views('monsters_of', { account_id: me, from: 0, limit: 100 }), views('rented_by', { account_id: me })]);
-      return [...own, ...rented.filter((r) => !own.some((o) => o.id === r.id))];
-    },
-    get: async (id) => { const v = await view<MonsterView | null>('get_monster', { token_id: id }); return v ? toMonster(v) : null; },
-    history: (id) => view<HistoryEntry[]>('get_history', { token_id: id }),
-    hatchStarters: () => call('hatch_starters', {}, toYocto(0.1), GAS_X),
-    startersClaimed: () => view<boolean>('starters_claimed', { account_id: w.signedAccountId }),
-    breed: async (a, b) => {
-      const fee = BigInt((await config()).breed_fee) + BigInt(toYocto(0.05)); // fee + storage; contract refunds excess
-      const v = await call('breed', { a, b }, fee.toString(), GAS_X) as MonsterView | null;
-      return v ? toMonster(v) : null;
-    },
-    list: (id, yocto) => call('list', { token_id: id, price: yocto }, '1'),
-    delist: (id) => call('delist', { token_id: id }),
-    buy: (id, yocto) => call('buy', { token_id: id }, yocto, GAS_X),
-    offerRent: (id, perDay, maxDays) => call('offer_rent', { token_id: id, price_per_day: perDay, max_days: maxDays }, '1'),
-    cancelRent: (id) => call('cancel_rent_offer', { token_id: id }),
-    rent: (id, days, total) => call('rent', { token_id: id, days }, total, GAS_X),
-    listings: () => views('listings', { from: 0, limit: 50 }),
-    rentOffers: () => views('rent_offers', { from: 0, limit: 50 }),
-    config,
-    owed: async () => (w.signedAccountId ? view<string>('owed_of', { account_id: w.signedAccountId }) : '0'),
-    withdrawOwed: () => call('withdraw_owed', {}, '0', GAS_X),
-    skillTypes,
-    skills: async () => {
-      if (!w.signedAccountId) return [];
-      const [rows, types] = await Promise.all([view<any[]>('skills_of', { account_id: w.signedAccountId }), skillTypes()]);
-      return joinOwned(rows, types);
-    },
-    equip: (id, skillIds) => call('equip', { token_id: id, skills: skillIds }, '1', GAS_X),
-  };
+  return DEMO ? demoMonsters : NFT_OFF;
 }

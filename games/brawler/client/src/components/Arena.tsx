@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { balanceChanged } from '@xyz/platform';
 import type { Monster } from '@/lib/genes.ts';
 import { STAGES, STAGE_IDS, type StageId } from '@/lib/stages.ts';
 import { getAudio, toggleMute } from '@/lib/audio.ts';
@@ -31,10 +32,10 @@ const asPlayer = (m: Monster): Player => ({ name: m.name, dna: m.dna, skills: m.
 
 // Demo states for /fight/<state>?demo : waiting (host lobby) | challenger (guest lobby) | fight | victory | defeat | void
 const DEMO_STAGE = (new URLSearchParams(location.search).get('stage') ?? 'ember') as StageId; // ?demo&stage=grove
-const demoSetup = (): FightSetup => ({ kind: 'host', mon: monsters()[0], stage: DEMO_STAGE in STAGES ? DEMO_STAGE : 'ember', opts: { pub: true, view: true, bettable: true, matchId: 99, stake: '500000000000000000000000', account: '' } });
+const demoSetup = (): FightSetup => ({ kind: 'host', mon: monsters()[0], stage: DEMO_STAGE in STAGES ? DEMO_STAGE : 'ember', opts: { pub: true, view: true, bettable: true, matchId: 99, stake: '500000000', account: '' } });
 const demoRoom = (mon: Monster, seat: number): RoomState => {
   const me = { name: mon.name, dna: mon.dna, account: 'demo-player.testnet', connected: true }, rival = { ...DEMO_ROOMS[2].players[0], connected: true };
-  return { code: 'DEMO', status: 'waiting', stage: 'ember', stake: '500000000000000000000000', matchId: 99, bettable: true, pub: true, view: true, seats: seat ? [rival, me] : [me, rival], spectators: 3 };
+  return { code: 'DEMO', status: 'waiting', stage: 'ember', stake: '500000000', matchId: 99, bettable: true, pub: true, view: true, seats: seat ? [rival, me] : [me, rival], spectators: 3 };
 };
 
 // Re-hosting from the end screen keeps the /fight path, so bump a key to remount (the fight effect is mount-only).
@@ -54,6 +55,8 @@ function Fight({ demo, again }: { demo?: string; again: () => void }) {
   const [room, setRoom] = useState<{ code: string; matchId: number | null; bettable: boolean; seat: number } | null>(null);
   const [names, setNames] = useState<string[]>([]);
   const [over, setOver] = useState<{ winner: number | null; reason: string; seat: number; settle?: Attestation } | null>(null);
+  useEffect(() => { if (over) window.Chomp?.result({ winner: over.winner }); }, [over]);
+  useEffect(() => { if (over && room?.matchId != null) { const t = setTimeout(balanceChanged, 6000); return () => clearTimeout(t); } }, [over]); // eslint-disable-line react-hooks/exhaustive-deps -- referee settles on-chain
   const [claimMsg, setClaimMsg] = useState('');
   const [muted, setMuted] = useState(getAudio().muted);
   const [rs, setRs] = useState<RoomState | null>(null);
@@ -128,9 +131,14 @@ function Fight({ demo, again }: { demo?: string; again: () => void }) {
   monRef.current = mine ?? monRef.current;
   useEffect(() => { if (closed) { const t = setTimeout(() => { go('/lobby'); }, 4000); return () => clearTimeout(t); } }, [closed]);
 
+  const leaveTried = useRef(false); // 2nd leave after a failed refund just leaves (Balance > Reclaim stake has it)
   const cancel = async () => {
-    if (room?.matchId != null && s?.kind === 'host' && !rs?.seats[1]) {
-      try { await arena.cancelMatch(room.matchId); } catch { /* user closed wallet; stake can still be reclaimed later */ }
+    if (!leaveTried.current && room?.matchId != null && s?.kind === 'host' && !rs?.seats[1]) {
+      try { await arena.cancelMatch(room.matchId); }
+      catch (e) {
+        leaveTried.current = true;
+        return setStatus(`Refund failed: ${errText(e)}. If a rival already staked on-chain they are still connecting: wait for them, or leave again and reclaim both stakes in Balance after 2 h.`);
+      }
     }
     go('/lobby');
   };
@@ -214,7 +222,7 @@ function Fight({ demo, again }: { demo?: string; again: () => void }) {
               <>
                 {over.settle
                   ? <button className="btn big" onClick={settle}><span><Ico n="icon-claim" />{over.winner === null ? 'Settle and return to lobby' : 'Claim and return to lobby'}</span></button>
-                  : over.winner !== null && <p className="note">Result posts on-chain automatically within ~5 min; winnings land in your balance.</p>}
+                  : <p className="note">{over.winner === null ? 'The referee refunds both stakes on-chain.' : 'The referee pays the pot on-chain in a few seconds.'}</p>}
                 {claimMsg && <p className="note" role="status">{claimMsg}</p>}
               </>
             )}
@@ -273,6 +281,7 @@ function PracticePick({ onPick }: { onPick: (id: StageId) => void }) {
 function PracticeFight({ stage, again, change }: { stage: StageId; again: () => void; change: () => void }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [over, setOver] = useState<number | null>(null);
+  useEffect(() => { if (over !== null) window.Chomp?.result({ winner: over }); }, [over]);
   const [names, setNames] = useState<string[]>([]);
   const [muted, setMuted] = useState(getAudio().muted);
   const account = useArena().account ?? '';

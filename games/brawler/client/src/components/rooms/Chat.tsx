@@ -7,6 +7,7 @@ export function Chat({ lines, onSend, note }: { lines: ChatLine[]; onSend: (text
   const [text, setText] = useState('');
   const log = useRef<HTMLOListElement>(null);
   useEffect(() => { const el = log.current; if (el) el.scrollTop = el.scrollHeight; }, [lines]);
+  const send = () => { const t = text.trim(); if (t) { onSend(t); setText(''); } };
   return (
     <section className="chat slab" aria-label="Chat">
       <h3>Chat</h3>
@@ -20,9 +21,10 @@ export function Chat({ lines, onSend, note }: { lines: ChatLine[]; onSend: (text
           </li>
         ))}
       </ol>
-      <form className="chat-form" onSubmit={(e) => { e.preventDefault(); const t = text.trim(); if (t) { onSend(t); setText(''); } }}>
-        <input value={text} onChange={(e) => setText(e.target.value)} maxLength={200} placeholder="Type a message…" aria-label="Chat message" enterKeyHint="send" />
-        <button className="btn alt" disabled={!text.trim()}><span>Send</span></button>
+      {/* ponytail: no form submit: the portal's sandboxed iframe (no allow-forms) blocks submit events */}
+      <form className="chat-form">
+        <input onKeyDown={(e) => { if (e.key === 'Enter') send(); }} value={text} onChange={(e) => setText(e.target.value)} maxLength={200} placeholder="Type a message…" aria-label="Chat message" enterKeyHint="send" />
+        <button type="button" className="btn alt" disabled={!text.trim()} onClick={send}><span>Send</span></button>
       </form>
     </section>
   );

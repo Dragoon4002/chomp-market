@@ -71,6 +71,8 @@ pub struct Room {
     pub view: bool,
     pub bettable: bool,
     pub match_id: Option<u64>,
+    /// On-chain [a, b] once both are known; settle pays only these.
+    pub pair: [String; 2],
     pub stake: String,
     pub stage: StageId,
     pub seats: Vec<Seat>,
@@ -198,6 +200,7 @@ impl Shared {
             view: false,
             bettable: false,
             match_id: None,
+            pair: Default::default(),
             stake: "0".into(),
             stage: StageId::Ember,
             seats: vec![seat],

@@ -2,8 +2,7 @@ use crate::protocol::{spec_msg, start_msg};
 use crate::referee::Referee;
 use crate::room::{Lobby, Room, RoomRef, Status};
 use crate::session::{Conn, broadcast};
-use crate::{App, ChainMatch};
-use brawler_sim::genes::{Dna, Skill};
+use crate::App;
 use serde_json::{Value, json};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -12,25 +11,8 @@ const FORFEIT: Duration = Duration::from_secs(30);
 const NO_SHOW: Duration = Duration::from_secs(5 * 60);
 const DONE_TTL: Duration = Duration::from_secs(120);
 
-pub async fn begin(app: Arc<App>, at: RoomRef, chain_match: Option<ChainMatch>) {
-    let Some(match_id) = at.get_mut(&mut app.lock().rooms).map(|r| r.match_id) else {
-        return;
-    };
-    let mut dna: [Option<(Dna, Vec<Skill>)>; 2] = [None, None];
-    let mut failed = false;
-    if let Some(id) = match_id {
-        let chain_match = match chain_match {
-            Some(m) => Some(m),
-            None => app.get_match(id).await,
-        };
-        let tokens = chain_match.and_then(|m| m.monsters).unwrap_or_default();
-        for (slot, token) in dna.iter_mut().zip(&tokens) {
-            let Some(token) = token else { continue };
-            *slot = app.monster_load(token).await;
-            failed |= slot.is_none(); // never fall back to client DNA for a chain monster
-        }
-    }
-    let Some((socks, mut start)) = go_live(&app, &at, failed, dna) else {
+pub async fn begin(app: Arc<App>, at: RoomRef) {
+    let Some((socks, mut start)) = go_live(&app, &at) else {
         return;
     };
     let (a, b) = tokio::join!(rtt(&socks[0]), rtt(&socks[1]));
@@ -46,31 +28,10 @@ fn input_delay(rtt_a: f64, rtt_b: f64) -> u32 {
     (((rtt_a + rtt_b) / 2. / (1000. / 60.)).ceil() + 3.).clamp(4., 15.) as u32
 }
 
-fn go_live(
-    app: &Arc<App>,
-    at: &RoomRef,
-    failed: bool,
-    dna: [Option<(Dna, Vec<Skill>)>; 2],
-) -> Option<([Arc<Conn>; 2], Value)> {
+fn go_live(app: &Arc<App>, at: &RoomRef) -> Option<([Arc<Conn>; 2], Value)> {
     let mut st = app.lock();
     let st = &mut *st;
     let r = at.get_mut(&mut st.rooms)?;
-    if failed {
-        // on-chain match stays playable on retry (or expires)
-        let r = st.rooms.remove(&at.code)?;
-        st.lobby.push(app);
-        for c in r.players() {
-            c.error("Could not load monster from chain, try again");
-            c.close();
-        }
-        return None;
-    }
-    for (s, d) in r.seats.iter_mut().zip(dna) {
-        if let Some((d, sk)) = d {
-            s.dna = d;
-            s.skills = sk;
-        }
-    }
     if r.status != Status::Waiting {
         return None;
     }
@@ -147,7 +108,19 @@ pub fn finish(app: &Arc<App>, r: &mut Room, lobby: &mut Lobby, winner: Option<i3
     let frames = r.frames.iter().map(|[h, g]| ((h << 16) | g) as u32);
     let tape_hash = crate::referee::tape_hash(r.stage.name(), frames.clone());
     let kos = r.referee.as_ref().map_or([0, 0], Referee::kos);
-    // TODO(solana): post {match_id, winner, kos, tape_hash} on-chain for chain matches (was settle/report_result).
+    if let Some(id) = r.match_id {
+        app.finished.lock().unwrap().insert(id);
+    }
+    if let Some(id) = r.match_id.filter(|_| app.chain.enabled()) {
+        let (chain, w, pair) = (app.chain.clone(), winner.map_or(2, |w| w as u8), r.pair.clone());
+        tokio::spawn(async move {
+            // confirm + rebroadcast inside; still unsettled → `cancel` refunds both after 2 h
+            match chain.settle(id, w, &pair).await {
+                Ok(sig) => eprintln!("settle {id} winner {w}: {sig}"),
+                Err(e) => eprintln!("settle {id} winner {w} failed: {e}"),
+            }
+        });
+    }
     if let [a, b] = &r.seats[..] {
         let at = SystemTime::now()
             .duration_since(UNIX_EPOCH)

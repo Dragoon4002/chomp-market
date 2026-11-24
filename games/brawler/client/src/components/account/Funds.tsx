@@ -1,59 +1,72 @@
 import { useEffect, useState } from 'react';
+import { ix, myMatches, readMatch } from '@xyz/platform';
 import { DEMO } from '@/lib/demo.ts';
 import { errText } from '@/lib/format.ts';
-import { fmt, toYocto, UNIT, usePlatform, useUnifiedBalance, useWallet } from '@/lib/chain.ts';
+import { fmt, GAME, requestFaucet, UNIT, useUnifiedBalance, useWallet } from '@/lib/chain.ts';
+import { type Reclaim, reclaims, remember } from '@/lib/stakes.ts';
 import { HubDialog, Ico } from '@/components/ui.tsx';
 
+// Devnet: the wallet's SOL is the balance (no platform deposit). Standalone burner can top up from the faucet.
 export function FundsDialog({ onClose }: { onClose: () => void }) {
-  const { signedAccountId, signIn, getBalance } = useWallet();
-  const { deposit, withdraw } = usePlatform();
+  const w = useWallet();
   const { balance } = useUnifiedBalance();
-  const [wallet, setWallet] = useState<bigint | null>(null);
-  const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
-  const loadWallet = () => { if (signedAccountId) getBalance(signedAccountId).then(setWallet).catch(() => setWallet(null)); };
-  useEffect(loadWallet, [signedAccountId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const run = async (kind: 'Deposit' | 'Withdraw') => {
-    const n = Number(amount);
-    if (!(n > 0)) return setMsg('Enter an amount above 0.');
-    let yocto: string;
-    try { yocto = toYocto(amount); } catch { return setMsg('Invalid amount.'); }
-    if (kind === 'Withdraw' && BigInt(yocto) > BigInt(balance ?? '0')) return setMsg(`Only ${fmt(balance)} ${UNIT} to withdraw.`);
-    setBusy(true); setMsg(`${kind}ing…`);
-    try {
-      await (kind === 'Deposit' ? deposit : withdraw)(yocto);
-      setMsg(`${kind} of ${n} ${UNIT} done.`); setAmount('');
-    } catch (e) { setMsg(`${kind} failed: ${errText(e)}`); } finally { setBusy(false); loadWallet(); }
+  const drip = async () => {
+    setBusy(true); setMsg('Requesting devnet SOL…');
+    try { await requestFaucet(w.signedAccountId); setMsg('Devnet SOL sent.'); } catch (e) { setMsg(`Faucet: ${errText(e)}`); } finally { setBusy(false); }
   };
-
   return (
-    <HubDialog title="Deposit / withdraw" onClose={onClose}>
-      {!signedAccountId ? (
-        <button type="button" className="btn" onClick={() => signIn()}><span><Ico n="icon-wallet" />Connect wallet</span></button>
+    <HubDialog title="Balance" onClose={onClose}>
+      {!w.signedAccountId ? (
+        <button type="button" className="btn" onClick={() => w.signIn()}><span><Ico n="icon-wallet" />Connect wallet</span></button>
       ) : (
         <>
           <dl className="kv funds-kv">
-            <dt>Game balance</dt><dd className="row-ico"><Ico n="coin-stack" />{balance === null ? 'loading…' : `${fmt(balance)} ${UNIT}`}</dd>
-            <dt>Wallet</dt><dd className="row-ico"><Ico n="coin" />{wallet === null ? 'loading…' : `${fmt(wallet)} ${UNIT}`}</dd>
+            <dt>Wallet</dt><dd className="row-ico"><Ico n="coin" />{balance === null ? 'loading…' : `${fmt(balance)} ${UNIT}`} <small>devnet</small></dd>
           </dl>
-          {DEMO ? <p className="note">Demo mode: deposits and withdrawals are off.</p> : (
-            <>
-              <label className="funds-amount">
-                <span>Amount</span>
-                <span className="stake-input"><input type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.0" value={amount} onChange={(e) => setAmount(e.target.value)} disabled={busy} aria-label={`Amount in ${UNIT}`} /><b>{UNIT}</b></span>
-              </label>
-              <div className="funds-actions">
-                <button type="button" className="btn" disabled={busy} onClick={() => run('Deposit')}><span><Ico n="coin" />Deposit</span></button>
-                <button type="button" className="btn ghost" disabled={busy} onClick={() => run('Withdraw')}><span><Ico n="coin-stack" />Withdraw</span></button>
-              </div>
-            </>
+          {!DEMO && 'kind' in w && w.kind === 'burner' && (
+            <div className="funds-actions"><button type="button" className="btn" disabled={busy} onClick={drip}><span><Ico n="coin" />Get devnet SOL</span></button></div>
           )}
+          <p className="note">Stakes are held by the match account on-chain; the referee pays the winner.</p>
           {msg && <p className="note" role="status">{msg}</p>}
+          {!DEMO && <ReclaimList />}
         </>
       )}
     </HubDialog>
   );
 }
 
+// Stakes still escrowed in matches this browser opened/joined: host can cancel an open seat; a filled seat refunds both after 2 h.
+function ReclaimList() {
+  const w = useWallet();
+  const me = w.signedAccountId;
+  const [rows, setRows] = useState<Reclaim[]>([]);
+  const [msg, setMsg] = useState('');
+  const load = () => {
+    myMatches(GAME, me).catch(() => []).then((ids) => { ids.forEach((id) => remember(GAME, id)); return reclaims(GAME, me, (id) => readMatch(GAME, id)); }).then(setRows, () => {}); // sandbox has no localStorage
+  };
+  useEffect(load, [me]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!rows.length) return msg ? <p className="note" role="status">{msg}</p> : null; // keep "Stake refunded." after the last row goes
+  const now = Date.now() / 1000;
+  const go = async (r: Reclaim) => {
+    setMsg('Confirm in your wallet…');
+    try { await w.sendIxs([ix.cancel(me, GAME, r.id, r.m.a, r.m.b)]); setMsg('Stake refunded.'); load(); } catch (e) { setMsg(`Reclaim: ${errText(e)}`); }
+  };
+  return (
+    <>
+      <h3>Reclaim stake</h3>
+      <ul className="reclaim">
+        {rows.map((r) => (
+          <li key={r.id}>
+            {fmt(r.m.stake)} {UNIT} · {r.m.b ? 'rival joined' : 'seat open'}{' '}
+            {now > r.at
+              ? <button type="button" className="link" onClick={() => go(r)}>Reclaim</button>
+              : <small>refund opens {new Date(r.at * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small>}
+          </li>
+        ))}
+      </ul>
+      {msg && <p className="note" role="status">{msg}</p>}
+    </>
+  );
+}
