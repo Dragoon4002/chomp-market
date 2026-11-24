@@ -1,13 +1,13 @@
 # Intake: Pet Den
 
-Tamagotchi-style virtual pet. Your monster lives in a MagicBlock **Private Ephemeral Rollup** (TEE): its stats and every care tap are private (owner-only read) and gasless. Only an evolution commits back to base, where the new tier makes the monster worth more on the market. **Free play only.** Original game, MIT.
+Tamagotchi-style virtual pet. Your monster lives on Solana devnet (`pet_den` program, base layer): stats, every care tap and evolutions are on chain. A MagicBlock **Private Ephemeral Rollup** (TEE) path (owner-only reads, gasless care, evolve commits back to base) is kept in the program but not wired in the client yet (see Chain). **Free play only.** Original game, MIT.
 
 ## Layout
 - `game.json`: html5, entry `index.html`, settle `result`.
 - `src/`: none (from scratch). Code lives in `build/`, no build step, no deps.
-- `build/`: `index.html` (markup + CSS, placeholder SVG scene), `ui.js` (DOM render, actions, mini-games, edge loop, chomp-sdk), `features.js` (shop, jobs, breeding, quests, achievements, leaderboard; pure functions on the state), `sim.js` (pure sim, mirror of `program/src/sim.rs`), `chain.js` (mock adapter: roster + economy state, `TODO(solana)` hooks), `chomp-sdk.js` (copy), `art/` (`<species>.png` heads from brawler `cutout/head.png`; `body-<species>.png` rest-pose full bodies composed once offline from brawler `cutout/*.png` + `rig.json`), `thumb.png`, `LICENSE`, `smoke.mjs`. Changed module URLs carry `?v=2`.
+- `build/`: `index.html` (markup + CSS, placeholder SVG scene), `ui.js` (DOM render, actions, mini-games, edge loop, chomp-sdk), `features.js` (shop, jobs, breeding, quests, achievements, leaderboard; pure functions on the state), `sim.js` (pure sim, mirror of `program/src/sim.rs`), `chain.js` (chain adapter: real devnet backend via the portal bridge, in-memory mock otherwise; roster + soft economy state), `chomp-sdk.js` (copy), `art/` (`<species>.png` heads from brawler `cutout/head.png`; `body-<species>.png` rest-pose full bodies composed once offline from brawler `cutout/*.png` + `rig.json`), `thumb.png`, `LICENSE`, `smoke.mjs`. Changed module URLs carry `?v=N` (chain/features/ui at `?v=3`).
 - **Background swap point:** drop `build/art/habitat-bg.webp` in and it covers the placeholder SVG scene (`.scene .bg` in `index.html`, a CSS `background-image` layered over the inline SVG). After dropping the file, uncomment the `background:` line in `.scene .bg` (kept commented so a missing file never 404s). Habitat changes tint the placeholder only (`.scene.h1/.h2`).
-- `program/`: standalone Anchor 1.0.2 crate (`[workspace]` table keeps it out of the root workspace), `ephemeral-rollups-sdk 0.18` with `anchor,access-control`. Its `Cargo.lock` pins the anchor macro crates to 1.0.2 (they float to 1.2.x otherwise and break `#[account(init)]`).
+- `program/`: standalone Anchor 1.0.2 crate (`[workspace]` table keeps it out of the root workspace), `ephemeral-rollups-sdk 0.18` with `anchor,access-control`. Its `Cargo.lock` pins the anchor macro crates to 1.0.2 (they float to 1.2.x otherwise and break `#[account(init)]`). Build: `cd program && cargo build-sbf` → `target/deploy/pet_den.so`; `cargo test` = sim tests. Program id `2shkiB14DfoCSKawmYMv3qsGTBCxuN4onKQuztYyG2ue` (`.keys/pet_den.json`), deployed by `scripts/devnet-setup.sh`.
 
 ## Source & license
 - URL: none, from scratch. License: MIT (ours). Engine: plain JS + DOM, ES modules.
@@ -42,13 +42,25 @@ Tamagotchi-style virtual pet. Your monster lives in a MagicBlock **Private Ephem
 - Storage: `localStorage` in try/catch (works standalone, in-memory inside the portal sandbox).
 
 ## Chain (program/)
+Real today: **base layer on devnet**. Pet PDA `["pet", owner, [idx]]`, idx < 8. Tick is lazy: `care`/`evolve` catch up decay from `Clock` (`TICK_SECS = 60`), nobody sends tick txs.
+
 | ix | layer | does |
 |---|---|---|
-| `create_pet(idx, dna)` | base | init Pet PDA `["pet", owner, [idx]]` (idx < 8), CPI `CreatePermission` (member = owner, AUTHORITY + TX_LOGS) |
-| `delegate_pet(idx)` | base | `DelegatePermission` + delegate Pet to the TEE validator (remaining_accounts[0]) |
-| `tick` | PER | catch up decay from `Clock` |
-| `care(action, score, item)` | PER | owner only, catch up then 0 feed / 1 play / 2 clean / 3 sleep / 4 train / 5 interact / 6 habitat(score) ; item = boost |
-| `evolve` | PER | level up, then `CommitAndUndelegatePermission` + `commit_and_undelegate` Pet → tier public on base |
+| `create_pet(idx, dna)` | base | init Pet PDA |
+| `care(action, score, item)` | base (or PER) | owner only, catch up then 0 feed / 1 play / 2 clean / 3 sleep / 4 train / 5 interact / 6 habitat(score); item = boost |
+| `tick` | base (or PER) | catch up only (client never sends it) |
+| `evolve` | base | catch up + level up (fails if the pet is delegated) |
+| `release` | base | close the Pet (rent → owner), frees the slot |
+| `create_permission(idx)` | base, PER only | CPI `CreatePermission` (member = owner, AUTHORITY + TX_LOGS) |
+| `delegate_pet(idx)` | base, PER only | `DelegatePermission` + delegate Pet to the TEE validator (remaining_accounts[0]) |
+| `evolve_commit` | PER only | level up, `CommitAndUndelegatePermission` + `commit_and_undelegate` Pet |
+
+Client (`build/chain.js`): real backend when `Chomp.tx` exists, `session.wallet` is set and we're in the portal iframe; else the in-memory mock (standalone, signed out, `smoke.mjs`). Boot fails over to the mock with a toast (e.g. no devnet SOL for rent ≈0.0015 SOL).
+- Writes: `Chomp.tx` with hand-encoded Anchor ix (disc consts in `chain.js`), only on user actions: hatch → `create_pet`, care taps → `care`, evolve → `evolve`, release → `release`. Each action is pre-checked with `sim.js` (no fee for a doomed tx), then confirmed via `getSignatureStatuses` and re-read. Program errors (6000+) map back to sim error names.
+- Reads: `Chomp.rpc('getMultipleAccounts')` on the 8 PDAs (`Chomp.pda`) at boot; between txs the client projects decay from the account's `last_ts` (same math as `catch_up`).
+- Client-only (not on chain): coins, gems, items/shop, quests, achievements, jobs, breeding rest, eggs, names, leaderboard. Inside the portal sandbox `localStorage` throws, so this soft state resets per load. `st.t` (jobs/breeding clock) stays on the 2 s demo tick.
+- Why not the PER: devnet TEE reads need an auth token (`getAuthToken` challenge signed by the wallet) on `devnet-tee.magicblock.app?token=…`; the bridge's `rpc {er:true}` goes to the plain ER endpoint without a token, so the iframe can't read a private pet. To enable: bridge carries the TEE token, then `create_permission` + `delegate_pet` after create, care via `Chomp.tx(..., {er:true})`, `evolve_commit` instead of `evolve`.
+- Known gaps: DNA is client-chosen (TODO VRF), item boost + play score are client-reported, one wallet popup/tx fee per care tap unless the portal wallet auto-signs (TODO session keys).
 
 ## Done checklist
 - [x] License OK, `LICENSE` in `build/`

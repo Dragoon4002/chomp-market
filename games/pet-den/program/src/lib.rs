@@ -1,6 +1,7 @@
-// Pet Den: a Tamagotchi monster whose live stats run inside a MagicBlock Private Ephemeral Rollup (TEE).
-// Base: create_pet (+ permission: owner-only read) -> delegate_pet (pet + permission -> TEE validator).
-// PER (gasless): tick / care. evolve = level up + commit_and_undelegate (tier goes public on base).
+// Pet Den: a Tamagotchi monster. Devnet today runs everything on the base layer:
+//   create_pet -> care / tick (lazy catch-up from Clock) -> evolve -> release (close, frees the roster slot).
+// Optional Private ER (TEE) path, kept for when the portal can reach the TEE RPC (auth token):
+//   create_permission (owner-only read) -> delegate_pet -> care / tick in the PER -> evolve_commit (commit + undelegate).
 use anchor_lang::prelude::*;
 use ephemeral_rollups_sdk::access_control::instructions::{
     CommitAndUndelegatePermissionCpiBuilder, CreatePermissionCpiBuilder, DelegatePermissionCpiBuilder,
@@ -14,7 +15,7 @@ use ephemeral_rollups_sdk::ephem::MagicIntentBundleBuilder;
 pub mod sim;
 use sim::{Action, SimError, Stats};
 
-declare_id!("AUeP7rEoWiEwEpysKxecj7y5AXjHg76weMUZhHp5SXbr"); // placeholder, replaced at deploy
+declare_id!("2shkiB14DfoCSKawmYMv3qsGTBCxuN4onKQuztYyG2ue");
 
 pub const PET: &[u8] = b"pet";
 /// Roster size: Pet PDA = ["pet", owner, [idx]], idx < MAX_PETS.
@@ -27,7 +28,7 @@ pub const TICK_SECS: i64 = 60;
 pub mod pet_den {
     use super::*;
 
-    /// Base layer. Up to MAX_PETS per owner (roster slot idx). Also creates its PER permission: only the owner can read it in the TEE.
+    /// Base layer. Up to MAX_PETS per owner (roster slot idx).
     // TODO(solana): dna from MagicBlock VRF (hatch) instead of the client; breed(a, b) ix mixes two adult pets' DNA (see build/sim.js breed).
     pub fn create_pet(ctx: Context<CreatePet>, idx: u8, dna: u32) -> Result<()> {
         require!(idx < MAX_PETS, PetError::RosterFull);
@@ -39,18 +40,24 @@ pub mod pet_den {
         pet.last_ts = Clock::get()?.unix_timestamp;
         pet.bump = ctx.bumps.pet;
         // TODO(solana): NFT mint a Metaplex Core asset for the pet (tier attribute) so it lists on the portal market.
+        Ok(())
+    }
+
+    /// Base layer, PER path only (once per pet): permission account so only the owner can read the pet in the TEE.
+    pub fn create_permission(ctx: Context<CreatePermission>, idx: u8) -> Result<()> {
         let owner = ctx.accounts.owner.key();
+        let bump = ctx.accounts.pet.bump;
         CreatePermissionCpiBuilder::new(&ctx.accounts.permission_program)
-            .permissioned_account(&pet.to_account_info())
+            .permissioned_account(&ctx.accounts.pet.to_account_info())
             .permission(&ctx.accounts.permission)
             .payer(&ctx.accounts.owner)
             .system_program(&ctx.accounts.system_program)
             .args(MembersArgs { members: Some(vec![Member { flags: AUTHORITY_FLAG | TX_LOGS_FLAG, pubkey: owner }]) })
-            .invoke_signed(&[&[PET, owner.as_ref(), &[idx], &[pet.bump]]])?;
+            .invoke_signed(&[&[PET, owner.as_ref(), &[idx], &[bump]]])?;
         Ok(())
     }
 
-    /// Base layer. Delegates the permission and the pet to the TEE validator (pass it as remaining_accounts[0]).
+    /// Base layer, PER path only (after create_permission). Delegates the permission and the pet to the TEE validator (pass it as remaining_accounts[0]).
     pub fn delegate_pet<'info>(ctx: Context<'info, DelegatePet<'info>>, idx: u8) -> Result<()> {
         let owner = ctx.accounts.owner.key();
         let (_, bump) = Pubkey::find_program_address(&[PET, owner.as_ref(), &[idx]], &crate::ID);
@@ -74,12 +81,12 @@ pub mod pet_den {
         Ok(())
     }
 
-    /// PER. Advance decay to now. Anyone may call (harmless), owner usually does.
+    /// Base or PER. Advance decay to now. Anyone may call (harmless), owner usually does.
     pub fn tick(ctx: Context<Care>) -> Result<()> {
         catch_up(&mut ctx.accounts.pet)
     }
 
-    /// PER, gasless. action: 0 feed, 1 play(score 0-10 from the mini-game), 2 clean, 3 sleep/wake, 4 train, 5 interact,
+    /// Base (fee) or PER (gasless). action: 0 feed, 1 play(score 0-10 from the mini-game), 2 clean, 3 sleep/wake, 4 train, 5 interact,
     /// 6 move habitat (score = habitat index). item: 1 = an inventory item boosts feed/play/clean.
     // TODO(solana): item = burn 1 SPL item token (treat/toy/soap) from the owner in the same tx.
     // TODO(solana): session keys (#[session_auth_or], session-keys 3.1.1) so care taps need no wallet popup.
@@ -101,11 +108,23 @@ pub mod pet_den {
         Ok(())
     }
 
+    /// Base layer. Level up (pet must not be delegated: then the base copy is owned by the delegation program and this fails).
+    pub fn evolve(ctx: Context<EvolveBase>) -> Result<()> {
+        let pet = &mut ctx.accounts.pet;
+        catch_up(pet)?;
+        pet.stats.evolve().map_err(PetError::from)?;
+        Ok(())
+    }
+
+    /// Base layer. Close the pet (e.g. it ran away): rent back to the owner, roster slot free for a new create_pet.
+    pub fn release(_ctx: Context<Release>) -> Result<()> {
+        Ok(())
+    }
+
     /// PER. Level up, then commit + undelegate pet and permission: the new tier lands on base (tradeable).
     /// Client re-delegates to keep caring.
-    pub fn evolve(ctx: Context<Evolve>) -> Result<()> {
+    pub fn evolve_commit(ctx: Context<Evolve>) -> Result<()> {
         let pet = &mut ctx.accounts.pet;
-        require_keys_eq!(ctx.accounts.owner.key(), pet.owner, PetError::NotOwner);
         catch_up(pet)?;
         pet.stats.evolve().map_err(PetError::from)?;
         // TODO(solana): Magic Action after commit -> update the Core asset's tier attribute + pay the streak bonus into the pet's earnings vault.
@@ -154,6 +173,16 @@ pub struct CreatePet<'info> {
     pub owner: Signer<'info>,
     #[account(init, payer = owner, space = 8 + Pet::INIT_SPACE, seeds = [PET, owner.key().as_ref(), &[idx]], bump)]
     pub pet: Account<'info, Pet>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(idx: u8)]
+pub struct CreatePermission<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    #[account(seeds = [PET, owner.key().as_ref(), &[idx]], bump = pet.bump)]
+    pub pet: Account<'info, Pet>,
     /// CHECK: permission PDA, derived + checked by the permission program
     #[account(mut)]
     pub permission: UncheckedAccount<'info>,
@@ -161,6 +190,21 @@ pub struct CreatePet<'info> {
     #[account(address = PERMISSION_PROGRAM_ID)]
     pub permission_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct EvolveBase<'info> {
+    pub owner: Signer<'info>,
+    #[account(mut, seeds = [PET, owner.key().as_ref(), &[pet.idx]], bump = pet.bump)]
+    pub pet: Account<'info, Pet>,
+}
+
+#[derive(Accounts)]
+pub struct Release<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    #[account(mut, close = owner, seeds = [PET, owner.key().as_ref(), &[pet.idx]], bump = pet.bump)]
+    pub pet: Account<'info, Pet>,
 }
 
 #[delegate]

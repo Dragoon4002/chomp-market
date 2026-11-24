@@ -1,7 +1,7 @@
 // Den features around the sim: shop, jobs, breeding, quests, achievements, leaderboard.
 // Plain functions on the chain state `st` (chain.js). They return a message or throw Error(msg). No DOM, no clock: time = st.t ticks.
 import { rng, breed, lookOf, level, valueOf } from './sim.js?v=2';
-import { MAX_PETS } from './chain.js?v=2';
+import { MAX_PETS } from './chain.js?v=3';
 
 export const SHOP = [
   { id: 'treat', icon: '🍖', name: 'Moon Treat', price: 20, info: 'Feed boost: +15 food, +5 joy' },

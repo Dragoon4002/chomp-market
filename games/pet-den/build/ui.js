@@ -1,7 +1,7 @@
 // Pet Den UI: DOM render + actions + chomp-sdk wiring. Sim rules live in sim.js, den features in features.js.
 import { lookOf, rng, isSick, valueOf, scoreOf, NEED, TIERS, HABITATS, level, influence, ready, LEVEL_XP } from './sim.js?v=2';
-import { createChain, MAX_PETS } from './chain.js?v=2';
-import * as F from './features.js?v=2';
+import { createChain, MAX_PETS } from './chain.js?v=3';
+import * as F from './features.js?v=3';
 
 const $ = (id) => document.getElementById(id);
 const chomp = (f, ...a) => { try { window.Chomp?.[f](...a); } catch (e) { console.warn(e); } };
@@ -236,8 +236,8 @@ function reactGame() {
 }
 
 async function hatch(i) {
-  const S = st(), [dna] = S.eggs.splice(i, 1);
-  await chain.createPet(dna); await chain.delegate(S.pets.length - 1);
+  const S = st();
+  await chain.createPet(S.eggs[i]); S.eggs.splice(i, 1); await chain.delegate(S.pets.length - 1);
   S.sel = S.pets.length - 1; S.n.hatch++;
   return `${F.name(cur())} hatched!`;
 }
@@ -271,6 +271,7 @@ document.addEventListener('click', (e) => {
 
 async function release(i) {
   const S = st();
+  await chain.release(i); // on chain: closes the pet account, frees the slot
   S.pets.splice(i, 1); S.sel = Math.min(S.sel, Math.max(0, S.pets.length - 1));
   if (!S.pets.length && !S.eggs.length) F.addEgg(S, F.eggDna(S));
   if (!S.pets.length) await hatch(0);
@@ -284,7 +285,7 @@ async function evolveOrRelease() {
   await chain.evolve(S.sel, now());
   S.n.evolve++;
   finish(p, 'evolve');
-  await chain.delegate(S.sel); // back into the PER to keep caring
+  await chain.delegate(S.sel); // PER path: back into the rollup (no-op on base)
   return `Evolved into ${TIERS[p.stats.tier]}! Tier committed to base.`;
 }
 
@@ -301,16 +302,21 @@ function rename() {
 async function boot(s) {
   if (session) return;
   session = { mode: 'free', ...s, seedU: /^\d+$/.test(String(s.seed)) ? Number(s.seed) >>> 0 : hash(s.seed) };
-  const wallet = session.wallet || 'local';
-  chain = createChain(wallet, now());
-  st().seedU = session.seedU;
-  if (!st().pets.length) {
-    await chain.createPet(F.eggDna(st())); await chain.delegate(0); // TODO(solana): VRF hatch + Core NFT mint
-    F.addEgg(st(), F.eggDna(st()));
+  let wallet = session.wallet || 'local', note = '';
+  const open1 = async (s) => {
+    chain = await createChain(wallet, now(), s); st().seedU = session.seedU;
+    if (!st().pets.length) {
+      await chain.createPet(F.eggDna(st())); await chain.delegate(0); // TODO(solana): VRF hatch + Core NFT mint
+      F.addEgg(st(), F.eggDna(st()));
+    }
+  };
+  try { await open1(session); } catch (e) { // e.g. no devnet SOL: keep the den playable
+    console.warn('pet-den chain', e); wallet = 'local'; note = `Chain unavailable (${e.message}). Free play.`;
+    await open1({});
   }
   $('avatar').textContent = wallet.slice(0, 2).toUpperCase(); $('avatar').title = wallet;
   await chain.tick(now());
-  render();
+  render(); toast(note);
   setInterval(async () => {
     if (busy) return;
     const alive = st().pets.map((q) => q.stats.alive);
