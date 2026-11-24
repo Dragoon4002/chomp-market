@@ -1,0 +1,12 @@
+{
+  "name": "Sealed House",
+  "desc": "Bid blind on VRF-sealed vaults from three hints. Win, crack it open, sell back at 90% or keep the loot.",
+  "engine": "html5",
+  "thumb": "art/chest.svg",
+  "tags": ["auction", "collect", "vrf", "strategy"],
+  "entry": "index.html",
+  "settle": "result",
+  "license": "MIT",
+  "source": "original",
+  "soon": false
+}
