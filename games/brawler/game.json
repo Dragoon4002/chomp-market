@@ -3,6 +3,7 @@
   "desc": "Action-packed arena battles with unique heroes and abilities.",
   "engine": "next",
   "thumb": "/dash/brawler.png",
+  "hero": "/dash/brawler-hero.webp",
   "tags": [
     "fighting",
     "pvp"

@@ -1,11 +1,12 @@
 "use client";
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
-import { Clock, Flame, Gamepad2, Rocket, Sparkles, Trophy } from "lucide-react";
-import { ago, amount, change24, fmt, useAssets, type Machine, type Skill } from "@/lib/assets";
-import { collectionStats, loadMarket, salesFeed, windowStats, type Range } from "@/lib/stats";
-import { GAMES, gameThumb } from "@/lib/games";
-import { cx, Empty, KIND_COLOR, MonsterArt, Panel, Pct, Pill, prices, RARITY_TEXT, Row, SearchBar, SectionHead, Skel, SkillArt, SkillRow, Sparkline, Tabs, useLoad } from "@/components/ui";
+import { useEffect, useState, type ReactNode } from "react";
+import { ChevronLeft, ChevronRight, Clock, Crown, Flame, Gamepad2, Play, Rocket, Sparkles, Trophy, Zap } from "lucide-react";
+import { ago, change24, fmt, short, useAssets, type Machine, type Monster, type Skill } from "@/lib/assets";
+import { collectionStats, loadMarket, salesFeed, type Range } from "@/lib/stats";
+import { GAMES, gameHero, gameThumb, type Game } from "@/lib/games";
+import { GameCard } from "@/components/game-card";
+import { cx, Empty, KIND_COLOR, MonsterArt, Panel, Pct, Pill, prices, RARITY_TEXT, Row, SectionHead, Skel, SkillArt, Sparkline, Tabs, useLoad } from "@/components/ui";
 
 const card = "rounded-3xl border-3 border-ink bg-panel shadow-drop transition hover:-translate-y-1";
 
@@ -57,39 +58,125 @@ const Stack = ({ skills, size = 44 }: { skills: Skill[]; size?: number }) => (
 
 const RANGES = [["24H", "24h"], ["7D", "7d"], ["30D", "30d"]] as const;
 
+const PLAYABLE = GAMES.filter((g) => !g.soon);
+// ponytail: registry order (playable first). TODO(solana): rank by plays/volume once the indexer tracks matches.
+const TOP5 = [...PLAYABLE, ...GAMES.filter((g) => g.soon)].slice(0, 5);
+const playHref = (g: Game) => (g.soon ? "/play" : `/play/${g.slug}`);
+const hideBroken = (e: { currentTarget: HTMLImageElement }) => { e.currentTarget.style.visibility = "hidden"; };
+const btn = "inline-flex h-12 items-center gap-2 rounded-xl border-3 border-ink px-5 font-display text-xl shadow-drop-sm transition active:translate-y-0.5 active:shadow-none";
+
+// Fractal-style hero: rotating featured game over its art, top-5 strip along the bottom
+function Hero() {
+  const [i, setI] = useState(0);
+  const n = PLAYABLE.length;
+  useEffect(() => {
+    if (n < 2) return;
+    const t = setInterval(() => setI((x) => (x + 1) % n), 7000);
+    return () => clearInterval(t);
+  }, [n, i]); // i: manual nav restarts the timer
+  const g = PLAYABLE[i];
+  if (!g) return null;
+  return (
+    <section className="relative overflow-hidden rounded-3xl border-3 border-ink bg-sky-0 shadow-drop">
+      {PLAYABLE.map((x, j) => {
+        const h = gameHero(x);
+        return (
+          <div key={x.slug} aria-hidden className={cx("absolute inset-0 transition-opacity duration-700", j === i ? "opacity-100" : "opacity-0")}>
+            {h ? <img src={h} alt="" onError={hideBroken} className="size-full object-cover" /> : <>
+              <img src={gameThumb(x)} alt="" onError={hideBroken} className="size-full scale-110 object-cover opacity-60 blur-2xl" />
+              <img src={gameThumb(x)} alt="" onError={hideBroken} className="absolute right-[6%] top-24 hidden w-[36%] rotate-2 rounded-3xl border-3 border-ink shadow-drop md:block" />
+            </>}
+          </div>
+        );
+      })}
+      <div className="absolute inset-0 bg-gradient-to-r from-ink/90 via-ink/45 to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/30 to-transparent" />
+
+      <div className="relative px-5 pt-8 sm:px-10 sm:pt-14">
+        <div key={g.slug} className="max-w-xl animate-in fade-in slide-in-from-left-4 duration-500">
+          <Pill tone="gold">Featured game</Pill>
+          <h1 className="mt-4 text-5xl drop-shadow-[0_5px_0_var(--color-ink)] sm:text-7xl">{g.name}</h1>
+          <p className="mt-4 text-base font-bold text-cream/90 sm:text-lg">{g.desc}</p>
+          <p className="mt-3 flex flex-wrap gap-1.5">{g.tags.map((t) => <Pill key={t}>{t}</Pill>)}</p>
+          <div className="mt-7 flex flex-wrap gap-3">
+            <Link href={`/play/${g.slug}`} className={cx(btn, "bg-ember text-ink hover:bg-ember-hi")}><Play className="size-5 fill-current" /> Play now</Link>
+            <Link href="/play" className={cx(btn, "bg-panel hover:bg-panel-2")}>All games</Link>
+          </div>
+        </div>
+
+        <div className="mt-10 flex items-center gap-3 sm:mt-14">
+          <h2 className="flex items-center gap-2 whitespace-nowrap text-2xl sm:text-3xl"><Crown className="size-7 text-gold" />Top 5 Games</h2>
+          {n > 1 && <div className="ml-auto flex items-center gap-2">
+            {PLAYABLE.map((x, j) => <button key={x.slug} type="button" aria-label={`Show ${x.name}`} onClick={() => setI(j)}
+              className={cx("hidden h-3 rounded-full sm:block border-2 border-ink transition-all", j === i ? "w-8 bg-gold" : "w-3 bg-cream/40 hover:bg-cream/70")} />)}
+            {[-1, 1].map((d) => <button key={d} type="button" aria-label={d < 0 ? "Previous game" : "Next game"} onClick={() => setI((x) => (x + d + n) % n)}
+              className="grid size-10 place-items-center rounded-full border-3 border-ink bg-panel shadow-drop-sm transition hover:bg-panel-2">
+              {d < 0 ? <ChevronLeft className="size-5" /> : <ChevronRight className="size-5" />}</button>)}
+          </div>}
+        </div>
+        <Row className="pb-6 pt-4">
+          {TOP5.map((x, j) => (
+            <Link key={x.slug} href={playHref(x)} className="group relative flex w-64 shrink-0 snap-start items-end pl-12 transition hover:-translate-y-1 sm:w-72">
+              <span className="outline-text pointer-events-none absolute -bottom-2 left-0 z-10 font-display text-[130px] leading-[0.8] group-hover:[-webkit-text-stroke-color:var(--color-gold)]">{j + 1}</span>
+              <span className={cx("relative block w-full overflow-hidden rounded-2xl border-3 border-ink bg-panel-2 shadow-drop", x.slug === g.slug && "outline-3 outline-offset-2 outline-gold")}>
+                <img src={gameThumb(x)} alt="" onError={hideBroken} className={cx("aspect-[274/166] w-full object-cover", x.soon && "grayscale-[60%]")} />
+                {x.soon && <Pill className="absolute right-2 top-2">Soon</Pill>}
+                <span className="block truncate border-t-3 border-ink px-3 py-2 font-display text-lg">{x.name}</span>
+              </span>
+            </Link>
+          ))}
+        </Row>
+      </div>
+    </section>
+  );
+}
+
+type Player = { id: string; w: number; l: number; ko: number; best: Monster };
+// TODO(solana): weekly window needs match results from the indexer; aggregates lifetime monster records for now.
+const rankPlayers = (ms: Monster[]) => Object.values(ms.reduce<Record<string, Player>>((acc, m) => {
+  const p = (acc[m.owner_id] ??= { id: m.owner_id, w: 0, l: 0, ko: 0, best: m });
+  p.w += m.record.w; p.l += m.record.l; p.ko += m.record.ko;
+  if (m.record.w > p.best.record.w) p.best = m;
+  return acc;
+}, {})).sort((x, y) => y.w - x.w || y.ko - x.ko).slice(0, 5);
+const MEDAL = ["bg-gold", "bg-cream", "bg-ember"];
+
 export default function Home() {
   const a = useAssets();
   const [range, setRange] = useState<Range>("24H");
   const [d] = useLoad(async () => {
-    const [m, machines, monsters, mh] = await Promise.all([loadMarket(a), a.machines(), a.monsters(), a.history("monsters")]);
-    return { ...m, machines, monsters, mh };
+    const [m, machines, monsters, mine, mh] = await Promise.all([loadMarket(a), a.machines(), a.monsters(), a.myMonsters(), a.history("monsters")]);
+    const all = [...new Map([...monsters, ...mine].map((x) => [x.token_id, x])).values()];
+    return { ...m, machines, monsters, mh, players: rankPlayers(all) };
   }, [a.account]);
 
   const now = Date.now();
   const byId = (id: number) => d?.skills.find((s) => s.id === id);
-  const top = d?.skills.filter((s) => d.hist[s.id].length > 1).sort((x, y) => change24(d.hist[y.id]) - change24(d.hist[x.id]))[0];
+  const hottest = d?.skills.filter((s) => d.hist[s.id].length > 1).sort((x, y) => change24(d.hist[y.id]) - change24(d.hist[x.id])).slice(0, 8);
+  const top = hottest?.[0];
   const hot = d?.monsters.slice().sort((x, y) => y.record.w - x.record.w)[0];
   const live = d?.presales.filter((p) => !p.ended && p.start_ms <= now && (!p.end_ms || p.end_ms > now)).sort((x, y) => Number(!!y.cap_total) - Number(!!x.cap_total))[0];
   const liveSkill = live && byId(live.skill);
   const soldCurve = live && d ? d.hist[live.skill].filter(([t]) => t >= live.start_ms).map((_, i) => i + 1) : [];
-  const movers = d?.skills.filter((s) => d.hist[s.id].length > 1 && s.rarity !== "Common").sort((x, y) => Math.abs(change24(d.hist[y.id])) - Math.abs(change24(d.hist[x.id]))).slice(0, 6);
   const cols = d && collectionStats(d.cols, d.skills, d.hist, range).sort((x, y) => y.volume - x.volume);
-  const topSkills = d?.skills.map((s) => ({ s, v: windowStats(d.hist[s.id], "7D").volume })).sort((x, y) => y.v - x.v).slice(0, 10);
   const sales = d && salesFeed(d.skills, d.hist, d.mh).slice(0, 18);
   const pool = (m: Machine) => m.pool.slice().sort((x, y) => x.weight - y.weight).map((p) => byId(p.skill)).filter((s): s is Skill => !!s);
 
   return (
     <div>
-      {/* hero */}
-      <section className="flex flex-col items-center px-2 pb-10 pt-8 text-center sm:pt-14">
-        <Pill className="text-gold">Skills · Monsters · Presales</Pill>
-        <h1 className="mt-5 text-5xl drop-shadow-[0_6px_0_var(--color-ink)] sm:text-7xl lg:text-8xl">Trade in the <span className="text-ember">Arena</span></h1>
-        <p className="mt-5 max-w-lg text-base font-bold text-muted sm:text-lg">Buy skills, gear up your monster, win more fights. Everything settles on Solana.</p>
-        <div className="mt-8 w-full max-w-3xl"><SearchBar big /></div>
+{/* hero + top 5 */}
+      <Hero />
+
+      {/* featured games */}
+      <section className="mt-12">
+        <SectionHead title="Featured Games" icon={<Gamepad2 className="size-7 text-teal" />} href="/play" />
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">{GAMES.slice(0, 8).map((g) => <GameCard key={g.slug} g={g} />)}</div>
       </section>
 
-      {/* stat cards */}
-      <div className="grid gap-5 md:grid-cols-3">
+      {/* market highlights */}
+      <section className="mt-12">
+        <SectionHead title="Market Highlights" icon={<Zap className="size-7 text-gold" />} href="/activity" />
+        <div className="grid gap-5 md:grid-cols-3">
         {!d ? [0, 1, 2].map((i) => <Skel key={i} className="h-60" />) : <>
           {top ? <Stat label="Top Skill (24H)" href={`/item?id=skill:${top.id}`} chart={prices(d.hist[top.id])}
             icon={<SkillArt kind={top.kind} rarity={top.rarity} mag={top.mag} size={44} />} name={top.name} value={`${fmt(top.last_price)} SOL`} delta={<Pct v={change24(d.hist[top.id])} />} /> : <Blank label="Top Skill (24H)">No skill sales yet.</Blank>}
@@ -101,6 +188,50 @@ export default function Home() {
             delta={<span className="font-extrabold text-up">{live.cap_total ? `${Math.round((Number(live.sold) / Number(live.cap_total)) * 100)}%` : "Open"}</span>} /> : <Blank label="Live Presale">No live presale.</Blank>}
         </>}
       </div>
+      </section>
+
+      {/* top players */}
+      <section className="mt-12">
+        <SectionHead title="Top Players of the Week" icon={<Trophy className="size-7 text-gold" />} />
+        <Panel className="p-2 sm:p-3">
+          {!d ? <Skel /> : !d.players.length ? <Empty>No matches played yet.</Empty> : d.players.map((p, i) => (
+            <div key={p.id} className="flex items-center gap-3 rounded-2xl px-2 py-2.5 sm:gap-4 sm:px-3">
+              <span className={cx("grid size-9 shrink-0 place-items-center rounded-full border-3 border-ink font-display text-lg text-ink", MEDAL[i] ?? "bg-panel-2 text-cream")}>{i + 1}</span>
+              <MonsterArt dna={p.best.dna} size={44} />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2 truncate font-display text-lg leading-tight">{short(p.id)}{p.id === a.account && <Pill tone="teal">You</Pill>}</span>
+                <span className="block truncate text-xs font-extrabold text-muted">Best: {p.best.name} #{p.best.token_id}</span>
+              </span>
+              <span className="hidden w-20 text-right text-sm font-bold text-muted sm:block">KO <span className="text-cream tabular-nums">{p.ko}</span></span>
+              <span className="hidden w-20 text-right text-sm font-bold text-muted sm:block">Win <span className="text-cream tabular-nums">{Math.round((p.w / Math.max(1, p.w + p.l)) * 100)}%</span></span>
+              <span className="w-20 shrink-0 text-right font-display text-xl tabular-nums">{p.w}<span className="text-sm text-muted">W</span> {p.l}<span className="text-sm text-muted">L</span></span>
+            </div>
+          ))}
+        </Panel>
+      </section>
+
+      {/* hottest items */}
+      <section className="mt-12">
+        <SectionHead title="Hottest in the Store" icon={<Flame className="size-7 text-ember" />} href="/search?type=skill&sort=change" />
+        <div className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-4">
+          {!hottest ? Array.from({ length: 8 }, (_, i) => <Skel key={i} className="h-52" />) : !hottest.length ? <Empty>No trades yet.</Empty> : hottest.map((s) => (
+            <Link key={s.id} href={`/item?id=skill:${s.id}`} className={cx(card, "flex flex-col p-3 hover:bg-panel-2 sm:p-4")}>
+              <span className="flex items-center gap-3">
+                <SkillArt kind={s.kind} rarity={s.rarity} mag={s.mag} size={48} />
+                <span className="min-w-0">
+                  <span className="block truncate font-display text-lg leading-tight">{s.name}</span>
+                  <span className={cx("text-xs font-extrabold uppercase", RARITY_TEXT[s.rarity])}>{s.rarity}</span>
+                </span>
+              </span>
+              <Sparkline data={prices(d!.hist[s.id])} className="my-3 h-12" />
+              <span className="mt-auto flex flex-wrap items-end justify-between gap-x-2">
+                <span className="whitespace-nowrap text-sm font-extrabold tabular-nums">{fmt(s.floor ?? s.last_price)} <span className="text-muted">SOL</span></span>
+                <Pct v={change24(d!.hist[s.id])} />
+              </span>
+            </Link>
+          ))}
+        </div>
+      </section>
 
       {/* fortune spin */}
       <section className="mt-12">
@@ -152,42 +283,6 @@ export default function Home() {
         </Row>
       </section>
 
-      {/* top skills */}
-      <section className="mt-12">
-        <SectionHead title="Top Skills" icon={<Trophy className="size-7 text-gold" />} href="/search?type=skill" />
-        <Row>
-          {!topSkills ? Array.from({ length: 5 }, (_, i) => <Skel key={i} className="h-56 w-56 shrink-0" />) : topSkills.map(({ s, v }, i) => (
-            <Link key={s.id} href={`/item?id=skill:${s.id}`} className="group relative flex w-64 shrink-0 snap-start items-end pl-14 transition hover:-translate-y-1">
-              <span className="outline-text pointer-events-none absolute bottom-0 left-0 font-display text-[150px] leading-[0.8] group-hover:[-webkit-text-stroke-color:var(--color-gold)]">{i + 1}</span>
-              <span className="relative flex w-full flex-col items-center rounded-3xl border-3 border-ink bg-panel-2 p-4 shadow-drop">
-                <SkillArt kind={s.kind} rarity={s.rarity} mag={s.mag} size={96} />
-                <span className="mt-3 w-full truncate text-center font-display text-lg">{s.name}</span>
-                <span className={cx("text-xs font-extrabold uppercase", RARITY_TEXT[s.rarity])}>{s.rarity}</span>
-                <span className="mt-2 text-sm font-bold text-muted">7D vol <span className="text-cream tabular-nums">{v.toFixed(2)} SOL</span></span>
-              </span>
-            </Link>
-          ))}
-        </Row>
-      </section>
-
-      {/* featured games */}
-      <section className="mt-12">
-        <SectionHead title="Featured Games" icon={<Gamepad2 className="size-7 text-teal" />} href="/play" />
-        <Row>
-          {GAMES.map((g) => (
-            <Link key={g.slug} href={g.soon ? "/play" : `/play/${g.slug}`} className={cx(card, "relative block h-44 w-72 shrink-0 snap-start overflow-hidden")}>
-              <img src={gameThumb(g)} alt="" className={cx("absolute inset-0 size-full object-cover", g.soon && "grayscale-[60%]")} />
-              <span className="absolute inset-0 bg-gradient-to-t from-ink via-ink/40 to-transparent" />
-              {g.soon && <Pill className="absolute right-3 top-3">Coming soon</Pill>}
-              <span className="absolute inset-x-3 bottom-3">
-                <span className="block truncate font-display text-2xl drop-shadow-[0_2px_0_var(--color-ink)]">{g.name}</span>
-                <span className="mt-1 flex gap-1">{g.tags.slice(0, 3).map((t) => <Pill key={t}>{t}</Pill>)}</span>
-              </span>
-            </Link>
-          ))}
-        </Row>
-      </section>
-
       {/* recent sales */}
       <section className="mt-12">
         <SectionHead title="Recent Sales" icon={<Clock className="size-7 text-muted" />} href="/activity" />
@@ -210,33 +305,6 @@ export default function Home() {
           </div>
         </Row>}
       </section>
-
-      {/* movers | monsters */}
-      <div className="mt-12 grid gap-5 lg:grid-cols-[1.4fr_1fr]">
-        <Panel className="p-3 sm:p-4">
-          <div className="flex items-baseline justify-between px-3 pb-2 pt-1">
-            <h2 className="text-2xl">Top movers</h2>
-            <Link href="/search?type=skill&sort=change" className="text-sm font-extrabold text-gold hover:underline">See all →</Link>
-          </div>
-          {!movers ? <Skel /> : movers.length ? movers.map((s) => <SkillRow key={s.id} s={s} h={d!.hist[s.id]} />) : <Empty>No trades yet.</Empty>}
-        </Panel>
-        <Panel className="p-3 sm:p-4">
-          <div className="flex items-baseline justify-between px-3 pb-2 pt-1">
-            <h2 className="text-2xl">Monsters for sale</h2>
-            <Link href="/search?type=monster" className="text-sm font-extrabold text-gold hover:underline">See all →</Link>
-          </div>
-          {!d ? <Skel /> : !d.monsters.length ? <Empty>No monsters for sale.</Empty> : d.monsters.slice(0, 6).map((m) => (
-            <Link key={m.token_id} href={`/item?id=monster:${m.token_id}`} className="flex items-center gap-3 rounded-2xl px-3 py-2.5 transition hover:bg-panel-2">
-              <MonsterArt dna={m.dna} size={44} />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-display text-lg leading-tight">{m.name} <span className="text-muted">#{m.token_id}</span></span>
-                <span className="text-xs font-extrabold text-muted">Gen {m.gen} · {m.record.w}W {m.record.l}L</span>
-              </span>
-              <span className="font-extrabold tabular-nums">{amount(m.price).toFixed(2)} SOL</span>
-            </Link>
-          ))}
-        </Panel>
-      </div>
 
       {/* launchpad banner */}
       <section className="relative mt-12 overflow-hidden rounded-3xl border-3 border-ink bg-gradient-to-br from-sky-2 via-panel-2 to-[color-mix(in_oklab,var(--color-ember)_45%,var(--color-panel-2))] p-6 shadow-drop sm:p-10">

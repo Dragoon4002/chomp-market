@@ -1,7 +1,7 @@
 // Portal registry. next.config.ts reads games/*/game.json at build and inlines it as CHOMP_GAMES.
 export type Game = {
   slug: string; name: string; desc: string; engine: "html5" | "godot" | "unity" | "next";
-  thumb: string; tags: string[]; settle: "result" | "frames";
+  thumb: string; hero?: string; tags: string[]; settle: "result" | "frames";
   entry?: string; url?: string; license?: string; source?: string; soon?: boolean;
 };
 
@@ -12,4 +12,7 @@ const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 const GAMES_ORIGIN = process.env.NEXT_PUBLIC_GAMES_ORIGIN?.replace(/\/$/, "");
 export const gameSrc = (g: Game) => g.url ?? (GAMES_ORIGIN ? `${GAMES_ORIGIN}/g/${g.slug}/${g.entry}` : `${BASE}/g/${g.slug}/${g.entry}`);
 export const ownOrigin = (g: Game) => !!(g.url || GAMES_ORIGIN);
-export const gameThumb = (g: Game) => (g.thumb.startsWith("/") ? BASE + g.thumb : `${BASE}/g/${g.slug}/${g.thumb}`);
+// thumb/hero: "/x" = market public, else relative to games/<slug>/build
+const file = (g: Game, f: string) => (f.startsWith("/") ? BASE + f : `${BASE}/g/${g.slug}/${f}`);
+export const gameThumb = (g: Game) => file(g, g.thumb);
+export const gameHero = (g: Game) => g.hero && file(g, g.hero); // wide 16:9 art; home hero falls back to blurred thumb
