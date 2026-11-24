@@ -17,6 +17,7 @@ function GameManager(size, InputManager, Actuator, StorageManager) {
 GameManager.prototype.restart = function () {
   this.storageManager.clearGameState();
   this.actuator.continueGame(); // Clear the game won/lost message
+  this.chompStarted = false;
   this.setup();
 };
 
@@ -24,6 +25,7 @@ GameManager.prototype.restart = function () {
 GameManager.prototype.keepPlaying = function () {
   this.keepPlaying = true;
   this.actuator.continueGame(); // Clear the game won/lost message
+  this.chompStarted = false;
 };
 
 // Return true if the game is lost, or has won and the user hasn't kept playing
@@ -83,6 +85,7 @@ GameManager.prototype.actuate = function () {
 
   // Clear the state when the game is over (game over only, not win)
   if (this.over) {
+    if (window.Chomp) Chomp.result({ score: this.score }); // chomp portal bridge
     this.storageManager.clearGameState();
   } else {
     this.storageManager.setGameState(this.serialize());
@@ -128,6 +131,7 @@ GameManager.prototype.moveTile = function (tile, cell) {
 
 // Move tiles on the grid in the specified direction
 GameManager.prototype.move = function (direction) {
+  if (window.Chomp && !this.chompStarted) { this.chompStarted = true; Chomp.start(); }
   // 0: up, 1: right, 2: down, 3: left
   var self = this;
 

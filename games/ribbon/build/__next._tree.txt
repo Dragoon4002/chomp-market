@@ -1,0 +1,4 @@
+:HL["/g/ribbon/assets/static/chunks/2gok9qm1rm3pl.css","style"]
+:HL["/g/ribbon/assets/static/media/4686f7842ee651e2-s.p.2zp15__9k16__.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+1:[["children",{"s":"__PAGE__","h":160}]]
+0:{"b":"Qg-OpFzMcV-sOQ4a_HUoN","t":{"t":{"s":"","h":80,"c":"$Q1"}}}

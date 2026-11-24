@@ -47,7 +47,7 @@ export function RoomLobby(p: RoomLobbyProps) {
   const [called, setCalled] = useState(false);
   const joined = !!rs.seats[1];
   useEffect(() => { if (!joined) setCalled(false); }, [joined]);
-  const invite = `${location.origin}/play/join/${rs.code}${location.search}`;
+  const invite = `${location.origin}${location.pathname}${location.search}#/play/join/${rs.code}`; // hash routes (lib/nav.ts)
   const copy = (what: 'code' | 'link') => navigator.clipboard?.writeText(what === 'code' ? rs.code : invite).then(() => { setCopied(what); setTimeout(() => setCopied(null), 1500); }, () => {});
   const who = (i: number) => (i === seat ? p.mine : rs.seats[i]); // own card updates instantly, before the server echo
   const card = (i: number) => <SeatCard i={i} who={who(i)} you={i === seat} connected={i === seat || !!rs.seats[i]?.connected} locked={p.locked} onChange={i === seat ? () => setPick(true) : undefined} />;

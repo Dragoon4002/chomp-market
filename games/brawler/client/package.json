@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "EXPORT=1 next build && node export.mjs",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --no-warnings --test src/lib/sim/sim.test.ts src/lib/genes.test.ts src/lib/net.test.ts src/lib/market.test.ts src/lib/nft.test.ts src/lib/leaderboard.test.ts src/lib/tape.test.ts",
+    "test": "node --experimental-strip-types --no-warnings --test src/lib/sim/sim.test.ts src/lib/genes.test.ts src/lib/net.test.ts src/lib/market.test.ts src/lib/nft.test.ts src/lib/leaderboard.test.ts src/lib/tape.test.ts src/lib/stakes.test.ts",
     "godot:build": "node --experimental-strip-types --no-warnings ../godot/tools/export-data.ts && mkdir -p public/godot/game && \"${GODOT:-godot}\" --headless --path ../godot --export-release Web"
   },
   "dependencies": {

@@ -22,7 +22,6 @@ const RELAYED: [&str; 6] = ["in", "hash", "sdp", "ice", "go", "pick"];
 const MAX_MSG: usize = 16 * 1024;
 const TAPE_BATCH: usize = 600;
 const DENIED: &str = "Wallet signature check failed";
-const OTHER_GAME: &str = "Match is for another game";
 const CHAT_MAX: usize = 200;
 const CHAT_GAP: Duration = Duration::from_millis(500);
 
@@ -79,8 +78,8 @@ async fn run(app: Arc<App>, sock: WebSocket) {
             }
         }
     });
-    let nonce: [u8; 32] = rand::random();
-    conn.send(&json!({ "t": "hello", "nonce": B64.encode(nonce) }));
+    let nonce = B64.encode(rand::random::<[u8; 32]>());
+    conn.send(&json!({ "t": "hello", "nonce": nonce }));
     let mut session = Session {
         app,
         conn,
@@ -107,8 +106,8 @@ async fn run(app: Arc<App>, sock: WebSocket) {
 struct Session {
     app: Arc<App>,
     conn: Arc<Conn>,
-    /// Sent in `hello`; NEP-413 seat auth must sign it (no replay across sockets).
-    nonce: [u8; 32],
+    /// Sent in `hello` (base64); seat sig covers it (no replay across sockets).
+    nonce: String,
     room: Option<RoomRef>,
     /// Spectator's chat name (`account` from `watch`).
     watcher: String,
@@ -178,15 +177,8 @@ impl Session {
     }
 
     async fn authed(&self, m: &Value, account: &str, match_id: u64) -> bool {
-        !self.app.on_chain()
-            || self.app.chain
-                .verify_auth(
-                    &m["auth"],
-                    account,
-                    &format!("brawler-arena:{match_id}"),
-                    self.nonce,
-                )
-                .await
+        let msg = format!("chomp:{GAME}:{match_id}:{}", self.nonce);
+        !self.app.on_chain() || chain::verify_sig(account, msg.as_bytes(), m["sig"].as_str().unwrap_or(""))
     }
 
     fn seat(&self, m: &Value, default_name: &str, account: String) -> Seat {
@@ -210,18 +202,16 @@ impl Session {
                 "This server has no contract configured; cancel the match and create a free room",
             );
         }
+        let mut stake = m["stake"]
+            .as_str()
+            .filter(|s| stake_ok(s))
+            .unwrap_or("0")
+            .to_string();
         if let Some(id) = match_id {
-            let Some(mv) = self
-                .app
-                .get_match(id)
-                .await
-                .filter(|mv| mv.status == "open" && mv.host == account)
-            else {
+            let Some(mv) = self.app.get_match(id).await.filter(|mv| mv.a == account) else {
                 return Err("Not the host of this on-chain match");
             };
-            if mv.game != GAME {
-                return Err(OTHER_GAME);
-            }
+            stake = mv.stake.to_string();
             if !self.authed(m, &account, id).await {
                 return Err(DENIED);
             }
@@ -235,13 +225,11 @@ impl Session {
                 return Err("Room for this match already exists");
             }
         }
-        let stake = m["stake"]
-            .as_str()
-            .filter(|s| stake_ok(s))
-            .unwrap_or("0")
-            .to_string();
         let seat = self.seat(m, "Host", account);
         let mut st = self.app.lock();
+        if match_id.is_some_and(|id| self.app.finished(id)) {
+            return Err("Match already played");
+        }
         let at = st.open_room(seat, |r| {
             r.public = truthy(&m["pub"]);
             r.view = r.public || truthy(&m["view"]);
@@ -276,11 +264,10 @@ impl Session {
         if let Some(id) = match_id {
             match &self.app.get_match(id).await {
                 None if self.app.on_chain() => return Err("Match not found on-chain"),
-                Some(x) if x.game != GAME => return Err(OTHER_GAME),
-                Some(x) if x.status != "live" => {
+                Some(x) if x.b.is_none() => {
                     return Err("Join the match on-chain first (stake not paid yet)");
                 }
-                Some(x) if x.guest.as_deref() != Some(account.as_str()) => {
+                Some(x) if x.b.as_deref() != Some(account.as_str()) => {
                     return Err("Another account paid for this seat");
                 }
                 _ => {}
@@ -294,6 +281,9 @@ impl Session {
             .get_mut(&mut st.rooms)
             .filter(|r| r.seats.len() == 1 && r.status == Status::Waiting)
             .ok_or("Room already full")?;
+        if r.match_id.is_some() {
+            r.pair = [r.seats[0].account.clone(), account.clone()];
+        }
         r.seats.push(self.seat(m, "Guest", account));
         r.wants_bot = false;
         self.conn
@@ -309,15 +299,12 @@ impl Session {
         let account = str_of(&m["account"], 64);
         let id = int_id(&m["matchId"]).ok_or("Bad matchId")?;
         let mv = self.app.get_match(id).await.ok_or("Match not found")?;
-        if mv.game != GAME {
-            return Err(OTHER_GAME);
-        }
-        if mv.status != "live" {
+        if mv.b.is_none() {
             return Err("Match is not live on-chain");
         }
-        let me: i32 = if account == mv.host {
+        let me: i32 = if account == mv.a {
             0
-        } else if mv.guest.as_deref() == Some(account.as_str()) {
+        } else if mv.b.as_deref() == Some(account.as_str()) {
             1
         } else {
             return Err("Not a player in this match");
@@ -327,23 +314,21 @@ impl Session {
         }
         let mine = self.seat(m, if me == 1 { "Guest" } else { "Host" }, account);
         let mut st = self.app.lock();
+        if self.app.finished(id) {
+            return Err("Match already played");
+        }
         match st
             .rooms
             .values_mut()
             .find(|r| r.match_id == Some(id) && r.status == Status::Waiting)
         {
             None => {
-                let stake = if stake_ok(&mv.stake) {
-                    mv.stake
-                } else {
-                    "0".into()
-                };
                 let at = st.open_room(mine, |r| {
-                    r.public = mv.bettable;
+                    r.public = truthy(&m["pub"]);
                     r.view = true;
-                    r.bettable = mv.bettable;
                     r.match_id = Some(id);
-                    r.stake = stake;
+                    r.pair = [mv.a.clone(), mv.b.clone().unwrap_or_default()];
+                    r.stake = mv.stake.to_string();
                     r.stage = stage_of(&m["stage"]);
                     r.no_show = Some(me);
                 });
@@ -357,9 +342,9 @@ impl Session {
             }
             Some(r) => {
                 let other = if me == 1 {
-                    Some(mv.host.as_str())
+                    Some(mv.a.as_str())
                 } else {
-                    mv.guest.as_deref()
+                    mv.b.as_deref()
                 };
                 if r.seats.len() != 1 || Some(r.seats[0].account.as_str()) != other {
                     return Err("Room already taken");
@@ -376,7 +361,7 @@ impl Session {
                 drop(st);
                 self.room = Some(at.clone());
                 // tournaments have no host to press Start
-                tokio::spawn(game::begin(self.app.clone(), at, Some(mv)));
+                tokio::spawn(game::begin(self.app.clone(), at));
             }
         }
         Ok(())
@@ -535,7 +520,7 @@ impl Session {
         r.reset();
         r.push_state();
         drop(st);
-        tokio::spawn(game::begin(self.app.clone(), at.clone(), None));
+        tokio::spawn(game::begin(self.app.clone(), at.clone()));
         Ok(())
     }
 
@@ -586,7 +571,7 @@ impl Session {
             return Err("Waiting for a challenger");
         }
         drop(st);
-        tokio::spawn(game::begin(self.app.clone(), at.clone(), None));
+        tokio::spawn(game::begin(self.app.clone(), at.clone()));
         Ok(())
     }
 
@@ -672,7 +657,7 @@ impl Session {
             }
             Some(i) if r.status == Status::Waiting => {
                 r.seats.remove(i);
-                // TODO(solana): paid guest left a chain room -> refund + reopen (was `unjoin`).
+                // ponytail: paid guest keeps match.b on-chain; only it can re-join (no on-chain unjoin)
             }
             Some(i) => {
                 r.seats[i].conn = None;

@@ -1,0 +1,12 @@
+{
+  "name": "Tomb Delve",
+  "desc": "Card-battle your monster through cursed pyramids. Extract relics at camp, pawn them at market price, or die and lose it all.",
+  "engine": "next",
+  "thumb": "thumb.svg",
+  "hero": "hero.webp",
+  "tags": ["cards", "dungeon", "extraction"],
+  "entry": "index.html",
+  "settle": "result",
+  "license": "MIT",
+  "source": "from-scratch (chomp-market)"
+}

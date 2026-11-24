@@ -1,11 +1,10 @@
-//! Keyfall ws server. Env: PORT.
+//! Keyfall ws server. Env: PORT, SOLANA_RPC, CHOMP_PROGRAM_ID, REFEREE_KEYPAIR (see crates/chain).
 use chain::Chain;
 use std::{env::var, sync::Arc};
 
 #[tokio::main]
 async fn main() {
-    // TODO(solana): Chain::new(program id from env) once crates/chain is real.
-    let app = keyfall_server::App::new(Arc::new(Chain::default()));
+    let app = keyfall_server::App::new(Arc::new(Chain::from_env("keyfall")));
     let port = var("PORT").unwrap_or_else(|_| "8789".into());
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}"))
         .await

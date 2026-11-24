@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { BASE } from '@/lib/nav.ts';
 import { applySkills, archetype, sanitizeSkills, statsOf, SKILL_FX_MAX, SKILL_SLOTS, type Skill } from '@/lib/genes.ts';
 import { useWallet } from '@/lib/chain.ts';
 import { MARKET_URL, useMonsters, type NftMonster, type SkillType } from '@/lib/nft.ts';
@@ -80,7 +81,7 @@ export function Customize({ id }: { id?: string }) {
                   const t = slots[i];
                   return t ? (
                     <button key={i} type="button" className={`skill-slot ${t.rarity}`} disabled={!!why} title="Remove" onClick={() => set(ids.filter((x) => x !== t.id))}>
-                      <img src={`/skills/${t.kind}.svg`} alt="" /><b>{t.name}</b><small>{skillLabel(t)}</small>
+                      <img src={`${BASE}/skills/${t.kind}.svg`} alt="" /><b>{t.name}</b><small>{skillLabel(t)}</small>
                     </button>
                   ) : <div key={i} className="skill-slot empty"><span>Empty slot</span></div>;
                 })}
@@ -104,7 +105,7 @@ export function Customize({ id }: { id?: string }) {
                     const left = free(t) - (ids.includes(t.id) ? 1 : 0), no = why ?? blocked(slots, t, left);
                     return (
                       <button key={t.id} type="button" className={`skill-card ${t.rarity}`} disabled={!!no} title={no ?? 'Equip'} onClick={() => set([...ids, t.id])}>
-                        <img src={`/skills/${t.kind}.svg`} alt="" />
+                        <img src={`${BASE}/skills/${t.kind}.svg`} alt="" />
                         <b>{t.name}</b>
                         <small>{isEffect(t) ? SKILL_TEXT[t.kind] : skillLabel(t)}</small>
                         <span className="row" style={{ gap: 6, justifyContent: 'center' }}><span className={`chip rar ${t.rarity}`}>{t.rarity}</span><span className="chip">{left} free</span></span>

@@ -11,7 +11,7 @@ import { History, Stats, useFights } from './History.tsx';
 import { short } from '@/lib/format.ts';
 
 export function Account() {
-  const { signedAccountId, signIn, signOut, getBalance, loading, network } = useWallet();
+  const { signedAccountId, signIn, signOut, getBalance, loading, network, kind } = useWallet();
   const { balance } = useUnifiedBalance();
   const [bal, setBal] = useState<string>('');
   useEffect(() => {
@@ -31,14 +31,14 @@ export function Account() {
           {loading ? <p>Checking wallet…</p> : signedAccountId ? (
             <>
               <h2 title={signedAccountId}>{short(signedAccountId)}</h2>
-              <dl className="kv"><dt>Game balance</dt><dd className="row-ico"><Ico n="coin-stack" />{balance === null ? 'loading…' : `${fmt(balance)} ${UNIT}`} <button type="button" className="link" onClick={() => setFunds(true)}>Deposit / withdraw</button></dd><dt>Wallet</dt><dd className="row-ico"><Ico n="coin" />{bal ? `${bal} ${UNIT}` : 'loading…'}</dd><dt>Monsters</dt><dd className="row-ico"><Ico n="icon-monster" />{monsters().length}</dd></dl>
+              <dl className="kv"><dt>Wallet</dt><dd className="row-ico"><Ico n="coin" />{bal ? `${bal} ${UNIT}` : 'loading…'} <button type="button" className="link" onClick={() => setFunds(true)}>Get devnet SOL</button></dd><dt>Monsters</dt><dd className="row-ico"><Ico n="icon-monster" />{monsters().length}</dd></dl>
               {owed !== '0' && <button className="btn" onClick={() => api.withdrawOwed().then(() => setOwed('0'))}><span><Ico n="coin" />Withdraw {fmt(owed)} {UNIT} from failed payouts</span></button>}
-              <button className="btn ghost" onClick={() => signOut()}><span><Ico n="icon-close" />Disconnect</span></button>
+              {kind !== 'bridge' && <button className="btn ghost" onClick={() => signOut()}><span><Ico n="icon-close" />Disconnect</span></button>}
             </>
           ) : (
             <>
               <h2>Connect a wallet</h2>
-              <p className="sub">Sign in once. Stakes and bets use your game balance.</p>
+              <p className="sub">Sign in once. Stakes come from your wallet's devnet SOL.</p>
               <button className="btn" onClick={() => signIn()}><span><Ico n="icon-wallet" />Sign in</span></button>
             </>
           )}

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev -p 3001",
-    "build": "next build",
+    "build": "EXPORT=1 next build && node export.mjs",
     "start": "next start -p 3001",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --no-warnings --test src/sim.test.ts src/bot.test.ts src/code.test.ts"

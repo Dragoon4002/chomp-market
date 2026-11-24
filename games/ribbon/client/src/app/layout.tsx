@@ -9,6 +9,10 @@ export const metadata: Metadata = { title: 'Ribbon Rush' };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={font.className}>
+      <head>
+        {/* Chomp portal bridge, served by the market. Sync (tiny) so window.Chomp exists before the app mounts */}
+        <script src="/chomp-sdk.js" />
+      </head>
       <body>
         <noscript>Ribbon Rush needs JavaScript.</noscript>
         {children}

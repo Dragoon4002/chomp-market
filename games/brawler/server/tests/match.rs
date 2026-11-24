@@ -65,7 +65,7 @@ async fn serve() -> String {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let history = dir.join("h.jsonl").to_string_lossy().into_owned();
-    let app = brawler_server::App::with_history(chain, String::new(), history);
+    let app = brawler_server::App::with_history(chain, history);
     tokio::spawn(async move {
         axum::serve(listener, brawler_server::router(app))
             .await

@@ -1,6 +1,9 @@
 //! Ribbon Rush server: authoritative sim per matchId, ws protocol + referee per tasks/ribbon-spec.md.
 //! Chat per room: {t:'chat', text} from seats/watchers (<=200 chars, 1 per 500 ms) -> {t:'chat', from, seat, text, ts}
 //! (seat -1 = spectator); last 50 kept, sent as {t:'chatlog', lines} on auth/watch.
+//! Staked: {t:'auth', matchId, account, sig}; sig = base58 ed25519 over utf8 `chomp:ribbon:<matchId>:<hello.nonce>`
+//! (nonce = hex string from `hello`); account must be Match.a (seat 0) or Match.b (seat 1), both filled.
+//! On `over` the referee posts `settle(matchId, winner ?? 2)`.
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};
 use axum::http::{StatusCode, header};
@@ -9,10 +12,9 @@ use axum::{Router, routing::get};
 use futures_util::{SinkExt, StreamExt};
 use chain::Chain;
 use ribbon_sim::Sim;
-use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -41,6 +43,8 @@ struct Seat {
 
 struct Room {
     seats: [Seat; 2],
+    /// On-chain [a, b] (empty in dev mode); settle pays only these.
+    pair: [String; 2],
     watchers: Vec<Conn>,
     sim: Sim,
     tape: Vec<[u8; 2]>,
@@ -56,6 +60,7 @@ impl Room {
     fn new() -> Self {
         Room {
             seats: Default::default(),
+            pair: Default::default(),
             watchers: vec![],
             sim: Sim::new(),
             tape: vec![],
@@ -90,21 +95,15 @@ impl Room {
     }
 }
 
-#[derive(Deserialize)]
-struct ChainMatch {
-    status: String,
-    host: String,
-    guest: Option<String>,
-    #[serde(default)]
-    game: String,
-}
-
 pub struct App {
     chain: Arc<Chain>,
     tape_dir: PathBuf,
     tick_ms: u64,
     // ponytail: one global lock over all rooms; per-room locks if match count gets large
     rooms: Mutex<HashMap<u64, Room>>,
+    /// Match ids already played: never reopened, so a dropped settle can't be replayed (e.g. loser → void).
+    // ponytail: in memory, lost on restart; a settled match's closed account still rejects it
+    finished: Mutex<HashSet<u64>>,
     ids: AtomicU64,
 }
 
@@ -139,55 +138,46 @@ impl App {
             tape_dir: tape_dir.into(),
             tick_ms,
             rooms: Mutex::default(),
+            finished: Mutex::default(),
             ids: AtomicU64::new(1),
         })
     }
 
-    /// (matchId, account, chain seat). Dev mode (no CONTRACT_ID): no checks, seat picked by arrival.
+    /// (matchId, account, chain seat, chain [a, b]). Dev mode (no REFEREE_KEYPAIR): no checks, seat picked by arrival.
     async fn check(
         &self,
         m: &Value,
-        nonce: [u8; 32],
-    ) -> Result<(u64, String, Option<usize>), &'static str> {
+        nonce: &str,
+    ) -> Result<(u64, String, Option<usize>, [String; 2]), &'static str> {
         let id = match_id(&m["matchId"]).ok_or("bad matchId")?;
         let account = m["account"]
             .as_str()
             .filter(|a| !a.is_empty())
             .ok_or("no account")?;
-        if self.chain.contract.is_empty() {
-            return Ok((id, account.into(), None));
+        if !self.chain.enabled() {
+            return Ok((id, account.into(), None, Default::default()));
         }
-        let cm: ChainMatch = self
-            .chain
-            .view(&self.chain.contract, "get_match", json!({ "match_id": id }))
-            .await
-            .ok_or("match not found")?;
-        if cm.game != GAME {
-            return Err("match is for another game");
-        }
-        if cm.status != "live" {
+        let cm = self.chain.match_info(id).await.ok_or("match not found")?;
+        if cm.b.is_none() {
             return Err("match not live");
         }
-        let seat = if account == cm.host {
+        let seat = if account == cm.a {
             0
-        } else if cm.guest.as_deref() == Some(account) {
+        } else if cm.b.as_deref() == Some(account) {
             1
         } else {
             return Err("not a player in this match");
         };
-        let msg = format!("{GAME}:{id}");
-        if !self
-            .chain
-            .verify_auth(&m["auth"], account, &msg, nonce)
-            .await
-        {
+        let msg = format!("chomp:{GAME}:{id}:{nonce}");
+        if !chain::verify_sig(account, msg.as_bytes(), m["sig"].as_str().unwrap_or("")) {
             return Err("wallet signature check failed");
         }
-        Ok((id, account.into(), Some(seat)))
+        let pair = [cm.a, cm.b.unwrap_or_default()];
+        Ok((id, account.into(), Some(seat), pair))
     }
 
-    async fn auth(self: &Arc<Self>, m: &Value, conn: &Conn, nonce: [u8; 32]) -> Option<(u64, i8)> {
-        let (id, account, chain_seat) = match self.check(m, nonce).await {
+    async fn auth(self: &Arc<Self>, m: &Value, conn: &Conn, nonce: &str) -> Option<(u64, i8)> {
+        let (id, account, chain_seat, pair) = match self.check(m, nonce).await {
             Ok(x) => x,
             Err(e) => {
                 send(&conn.1, &json!({ "t": "error", "msg": e }));
@@ -196,9 +186,14 @@ impl App {
         };
         let mut rooms = self.rooms.lock().unwrap();
         if !rooms.contains_key(&id) {
+            if self.finished.lock().unwrap().contains(&id) {
+                send(&conn.1, &json!({ "t": "error", "msg": "match already played" }));
+                return None;
+            }
             tokio::spawn(self.clone().no_show(id));
         }
         let room = rooms.entry(id).or_insert_with(Room::new);
+        room.pair = pair;
         let seat = chain_seat
             .or_else(|| room.seats.iter().position(|s| s.account == account))
             .or_else(|| room.seats.iter().position(|s| s.account.is_empty()));
@@ -312,8 +307,19 @@ impl App {
         self.rooms.lock().unwrap().remove(&id);
     }
 
-    /// Broadcast over, save tape. TODO(solana): post {winner, kos, tape_hash} on-chain (was report_result).
+    /// Broadcast over, save tape, referee settles staked matches.
     fn finish(&self, id: u64, r: &mut Room, winner: Option<u8>, reason: &str) {
+        self.finished.lock().unwrap().insert(id);
+        if self.chain.enabled() {
+            let (chain, w, pair) = (self.chain.clone(), winner.unwrap_or(2), r.pair.clone());
+            tokio::spawn(async move {
+                // confirm + rebroadcast inside; still unsettled → `cancel` refunds both after 2 h
+                match chain.settle(id, w, &pair).await {
+                    Ok(sig) => eprintln!("settle {id} winner {w}: {sig}"),
+                    Err(e) => eprintln!("settle {id} winner {w} failed: {e}"),
+                }
+            });
+        }
         let kos = r.sim.score.map(|s| s as u8);
         let over = json!({ "t": "over", "winner": winner, "kos": kos, "reason": reason });
         r.broadcast(&over);
@@ -328,7 +334,7 @@ impl App {
         }
     }
 
-    /// Second seat never came: void. TODO(solana): host alone -> refund guest + reopen (was `unjoin`).
+    /// Second seat never came: void (settle draw refunds both).
     async fn no_show(self: Arc<Self>, id: u64) {
         tokio::time::sleep(NO_SHOW).await;
         let mut rooms = self.rooms.lock().unwrap();
@@ -378,8 +384,8 @@ async fn run(app: Arc<App>, sock: WebSocket) {
         }
     });
     let conn: Conn = (app.ids.fetch_add(1, Ordering::Relaxed), tx);
-    let nonce: [u8; 32] = rand::random();
-    send(&conn.1, &json!({ "t": "hello", "nonce": hex(&nonce) }));
+    let nonce = hex(&rand::random::<[u8; 32]>());
+    send(&conn.1, &json!({ "t": "hello", "nonce": nonce }));
     let mut at: Option<(u64, i8)> = None;
     let mut last_chat: Option<Instant> = None;
     while let Some(Ok(msg)) = stream.next().await {
@@ -392,7 +398,7 @@ async fn run(app: Arc<App>, sock: WebSocket) {
             continue;
         };
         match (m["t"].as_str(), at) {
-            (Some("auth"), None) => at = app.auth(&m, &conn, nonce).await,
+            (Some("auth"), None) => at = app.auth(&m, &conn, &nonce).await,
             (Some("watch"), None) => at = app.watch(&m, &conn),
             (Some("in"), Some((id, s @ 0..=1))) => {
                 if let Some(v) = m["v"].as_u64() {

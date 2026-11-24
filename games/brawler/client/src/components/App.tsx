@@ -21,8 +21,6 @@ import { Watch } from '@/components/rooms/Watch.tsx';
 import { Replay } from '@/components/rooms/Replay.tsx';
 import { Title } from '@/components/Title.tsx';
 
-// old bookmarks used #/path
-if (location.hash.startsWith('#/')) history.replaceState(null, '', location.hash.slice(1) + location.search);
 
 // In-app links switch screens without a reload so the room's WebSocket survives.
 function onLinkClick(e: MouseEvent) {
@@ -37,13 +35,17 @@ function onLinkClick(e: MouseEvent) {
 function usePath() {
   const [p, setP] = useState(route);
   useEffect(() => {
+    window.Chomp?.ready();
     const on = () => { setP(route()); scrollTo(0, 0); };
-    addEventListener('popstate', on);
+    addEventListener('hashchange', on);
     document.addEventListener('click', onLinkClick);
-    return () => { removeEventListener('popstate', on); document.removeEventListener('click', onLinkClick); };
+    return () => { removeEventListener('hashchange', on); document.removeEventListener('click', onLinkClick); };
   }, []);
   return p;
 }
+
+// No Solana backend yet (NFT market/breeding, tournaments): demo keeps the showcase, live builds say so.
+const SOON_PAGES = new Set(['market', 'breed', 'tournaments', 'tournament']);
 
 function Routes() {
   const [page = '', arg, arg2] = usePath();
@@ -52,7 +54,8 @@ function Routes() {
   if (page === 'watch' && arg) return <Watch key={arg} code={arg} />;
   if (page === 'replay' && arg) return <Replay key={arg} tapeKey={decodeURIComponent(arg)} />;
   if (page === '') return <Title />;
-  const body = page === 'demo' ? <DemoIndex />
+  const body = !DEMO && SOON_PAGES.has(page) ? <div><h1>Coming soon</h1><p className="sub">Monster market, breeding and cups are coming to Solana. Lobby and staked 1v1 work now.</p></div>
+    : page === 'demo' ? <DemoIndex />
     : page === 'sim' ? <MarketSim />
     : page === 'play' ? <Play initial={arg === 'join' ? 'join' : 'create'} invite={arg === 'join' ? arg2 : undefined} />
     : page === 'lobby' ? <Lobby />

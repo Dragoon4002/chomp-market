@@ -1,3 +1,4 @@
+import { BASE } from './nav.ts';
 import { newGame, step, hash, type GameState } from './sim/sim.ts';
 import { createRenderer } from './render/draw.ts';
 import { readInput } from './input.ts';
@@ -45,7 +46,7 @@ export interface HostOpts { pub: boolean; view: boolean; bettable: boolean; matc
 const params = new URLSearchParams(location.search);
 const FORCE_RELAY = params.has('relay'); // ?relay -> skip P2P (debug fallback path)
 const WS = location.protocol === 'https:' ? 'wss' : 'ws';
-export const SERVER = params.get('server') ?? process.env.NEXT_PUBLIC_SERVER_URL ?? `${WS}://${location.hostname}:8787`;
+export const SERVER = params.get('server') ?? process.env.NEXT_PUBLIC_SERVER_URL ?? `${WS}://${location.host}${BASE}-ws`; // market proxies /g/brawler-ws -> :8787;
 
 function loop(canvas: HTMLCanvasElement, players: Player[], seat: number, stage: StageId, hooks: Hooks, tap?: (inputs: number[], end: boolean) => void) {
   const renderer = createRenderer(canvas);
@@ -180,13 +181,13 @@ export function startOnline(canvas: HTMLCanvasElement, first: First, me: Player,
     sock.onmessage = async (e) => {
       const m = JSON.parse(e.data);
       if (m.t === 'ping') sock.send('{"t":"pong"}');
-      else if (m.t === 'hello') { // on-chain seats prove the account: wallet signs the server's nonce (NEP-413)
-        let auth;
+      else if (m.t === 'hello') { // on-chain seats prove the account: wallet signs `chomp:brawler:<matchId>:<nonce>`
+        let sig;
         if (first.matchId != null && sign) {
           say('Sign the login message in your wallet…');
-          try { auth = await sign(first.matchId, m.nonce); } catch { return say('Wallet signature needed to take your seat.'); }
+          try { sig = await sign(first.matchId, m.nonce); } catch { return say('Wallet signature needed to take your seat.'); }
         }
-        sock.send(JSON.stringify({ ...first, name: me.name, dna: me.dna, stage, auth }));
+        sock.send(JSON.stringify({ ...first, name: me.name, dna: me.dna, stage, sig }));
       } else if (m.t === 'room') { code = m.code; seat = m.seat ?? 0; say(''); hooks.room?.({ code: m.code, matchId: first.matchId, bettable: first.t === 'host' && first.bettable, seat }); }
       else if (m.t === 'error') {
         say(m.msg);

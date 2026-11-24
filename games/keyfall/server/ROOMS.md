@@ -5,7 +5,7 @@ How 1v1 rooms work in `keyfall-server` (`src/lib.rs`), from connect to on-chain 
 ## Overview
 
 ```
- browser A ─┐                         ┌─ chain seam (crates/chain, stub; TODO(solana))
+ browser A ─┐                         ┌─ chain seam (crates/chain: chomp Match PDA + settle)
             │  WebSocket (JSON)       │
  browser B ─┼──► keyfall-server ──────┤
             │   rooms: HashMap<code,  │
@@ -16,7 +16,7 @@ How 1v1 rooms work in `keyfall-server` (`src/lib.rs`), from connect to on-chain 
 - One process, all state in memory. Exactly one instance may run (rooms are not shared).
 - A **room** is a 4-letter code (`A-Z`) holding two seats, two authoritative sims (one per seat, same seed) and the match phase.
 - Clients send only keystrokes. The server simulates both games and sends each player only their own view, so a client can't fake hits, damage or the result, or see the opponent during the match.
-- Money never touches the server. TODO(solana): stakes escrowed on-chain; the referee can only post results.
+- Money never touches the server: stakes escrowed in the chomp Match PDA; the referee can only `settle`.
 
 ## Components
 
@@ -27,7 +27,7 @@ How 1v1 rooms work in `keyfall-server` (`src/lib.rs`), from connect to on-chain 
 | `Session` | `lib.rs` | one per socket: hello nonce, `(code, seat)` once seated, rate limit |
 | ticker | `router()` | `tokio::time::interval(50 ms)` → `App::tick()` |
 | `Sim` | `game.rs` | rules; stepped at 50 Hz (20 ms) inside each 50 ms tick |
-| `Chain` | `crates/chain` | `view`, `verify_auth` (stubs, TODO(solana)) |
+| `Chain` | `crates/chain` | `match_info`, `settle`, `verify_sig` |
 
 ## Room lifecycle
 
@@ -43,7 +43,7 @@ How 1v1 rooms work in `keyfall-server` (`src/lib.rs`), from connect to on-chain 
 | `wait` | nothing; one `state` sent when something changed | guest joins → `count`; host disconnects → room deleted |
 | `count` | `count_ms -= 50`; `state` to both seats | `count_ms` hits 0 → `live` |
 | `live` | `acc += 50`; step both sims every 20 ms; check `verdict`; `state` to both seats | verdict, forfeit |
-| `over` | send `over` with `result` to both seats, (TODO(solana): post result if staked), close sockets, delete room | — |
+| `over` | send `over` with `result` to both seats, referee `settle(matchId, winner ?? 2)` if staked, close sockets, delete room | — |
 
 Disconnects during `count`/`live`: the seat's `conn` becomes `None` and `gone_ms` grows by 50 ms per tick. The sim keeps running (enemies keep attacking). `gone_ms ≥ 15 000` → the other seat wins (`forfeit`). Both seats gone at once → winner by the rules at that moment (`rank`), reason `forfeit`.
 
@@ -86,7 +86,7 @@ JSON text frames, max 4 KiB, max 30 messages per second per socket (extra are dr
 
 ### Staked room (`matchId`)
 
-TODO(solana): chain matches (escrowed stake, wallet-signed seat auth over `keyfall:<matchId>` + hello nonce, referee result post) go through `crates/chain`, currently a stub: `verify_auth` is false and `view` is None, so the server refuses any `matchId` ("create a free room").
+Chain matches: client opens a chomp Match PDA (random u64 id), sends `matchId` + `account` + `sig` (base58 ed25519 over utf8 `chomp:keyfall:<matchId>:<hello.nonce>`). Server checks host = Match.a, guest = Match.b via `crates/chain`, and `settle`s on end. Without REFEREE_KEYPAIR the server refuses any `matchId` ("create a free room").
 
 ## Ending a match
 
@@ -106,11 +106,11 @@ Both sims get the same seed. Entity ids, kinds, words, sides and heights come fr
 | Threat | Mitigation |
 |---|---|
 | Client fakes hits, damage or result | server-authoritative sims; client sends only keys |
-| Someone takes another wallet's staked seat | `host`/`guest` must match the chain match, plus a wallet signature (TODO(solana)) |
+| Someone takes another wallet's staked seat | `host`/`guest` must match the chain match, plus a wallet signature |
 | Replayed signature | nonce is per socket (hello) |
 | Seat hijack on reconnect | `rejoin` needs the 128-bit random seat token from `room` |
 | Spam / flooding | 4 KiB frames, 30 msg/s per socket, one key per `k` message |
-| Server steals funds | referee can only post results; funds stay on-chain (TODO(solana)) |
+| Server steals funds | referee can only post results; funds stay on-chain |
 | Opponent scouting | each seat only ever receives its own view |
 
 ## Config
@@ -131,7 +131,7 @@ Manual two-player check: open the client in two windows, Host duel in one, open 
 
 ## Known gaps (decide before mainnet)
 
-1. **Restart loses rooms.** State is in memory. A staked match that was live when the server restarted is never reported; players must wait for the contract's `expire` to refund. Fix: persist `(code, matchId, seed, tokens, key log)` and replay on boot, or report `null` (refund) for orphaned live matches on startup.
+1. **Restart loses rooms.** State is in memory. A staked match that was live when the server restarted is never reported; players must wait for `cancel` after 2 h to refund. Fix: persist `(code, matchId, seed, tokens, key log)` and replay on boot, or report `null` (refund) for orphaned live matches on startup.
 2. **Host leaves after the guest paid.** If the host disconnects from a `wait` room after the guest's `join_match` landed but before the guest's `join` reaches the server, the room is deleted and the match stays `live` on chain. Same refund path (`expire`). Fix: keep staked rooms for a grace period instead of deleting them, or have the referee call `unjoin`/`report_result(null)`.
 3. **Failed `report_result`.** After 5 retries the call is only logged; the match stays live until `expire`. Fix: a retry queue persisted to disk.
 4. **Single instance.** Rooms live in one process; horizontal scaling needs sticky routing by room code or a shared store.

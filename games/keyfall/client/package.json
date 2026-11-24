@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "next dev -p 3004",
-    "build": "next build",
+    "build": "EXPORT=1 next build && node export.mjs",
     "start": "next start -p 3004",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --no-warnings --test src/lib/game.test.ts"
+    "test": "node --experimental-strip-types --no-warnings --test src/lib/game.test.ts src/lib/stakes.test.ts"
   },
   "dependencies": {
     "@xyz/platform": "*",

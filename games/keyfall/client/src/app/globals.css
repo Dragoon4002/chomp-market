@@ -2,7 +2,7 @@
    flat mauve buttons (0.368,0.310,0.365), black translucent panels, sky scene behind every menu. */
 @font-face {
   font-family: 'OpenDyslexic';
-  src: url('/fonts/OpenDyslexic-BoldItalic.otf') format('opentype');
+  src: url('/g/keyfall/fonts/OpenDyslexic-BoldItalic.otf') format('opentype');
   font-weight: 400 900;
   font-style: normal;
   font-display: block;
@@ -68,7 +68,7 @@ img { image-rendering: auto; }
 .confirm { background: rgb(0 0 0 / 0.8); padding: 16px; width: 400px; max-width: 100%; font-size: 16px; text-transform: none; }
 .confirm p { margin: 0 0 12px; }
 
-.howto { position: fixed !important; inset: 0; z-index: 5 !important; background: rgb(0 0 0 / 0.949); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; padding: 24px 16px; overflow-y: auto; }
+.howto { position: fixed !important; inset: 0; z-index: 5 !important; background: rgb(0 0 0 / 0.949); display: flex; flex-direction: column; align-items: center; justify-content: safe center; gap: 28px; padding: 24px 16px; overflow-y: auto; }
 .howto h2 { margin: 0; color: var(--title-y); font-size: 56px; text-shadow: var(--outline); text-align: center; }
 .howto-text { width: min(1200px, 100%); font-size: 28px; line-height: 1.4; }
 .howto-text p { margin: 0 0 1em; }
@@ -144,7 +144,7 @@ img { image-rendering: auto; }
 .strikes { position: absolute; left: 50%; bottom: 9.5cqh; transform: translateX(-50%); margin: 0; color: #ff3030; letter-spacing: 0.3em; text-shadow: var(--outline); }
 
 /* GameOverPanel: black .9 */
-.over { position: fixed; inset: 0; z-index: 10; background: rgb(0 0 0 / 0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; padding: 16px; text-align: center; }
+.over { position: fixed; inset: 0; z-index: 10; background: rgb(0 0 0 / 0.9); display: flex; flex-direction: column; align-items: center; justify-content: safe center; overflow-y: auto; gap: 22px; padding: 16px; text-align: center; }
 .over-h { margin: 0; font-size: clamp(44px, 9vw, 72px); text-shadow: var(--outline); }
 .over-h.lose { color: var(--red); }
 .over-h.win { color: var(--gold); }
@@ -175,6 +175,20 @@ img { image-rendering: auto; }
   .acct { max-width: 140px; }
   .col { padding-top: 84px; }
   .room-code { font-size: 52px; }
+}
+/* short viewports (portal iframe is 16:9, ~700px tall at 1440 wide): menu + result fit without scrolling */
+@media (max-height: 760px) {
+  .col { gap: 10px; padding: 80px 0 24px; }
+  .topbar { position: absolute !important; } /* scrolls away instead of covering the logo */
+  .logo img { width: min(480px, 80vw); }
+  .sub { margin: -6px 0 4px; font-size: 18px; }
+  .btn { height: 56px; font-size: 28px; }
+  .btn.big { font-size: 34px; }
+  .btn.sm, .field { height: 48px; font-size: 20px; }
+  .over { gap: 12px; }
+  .over-h { font-size: clamp(40px, 8vw, 56px); }
+  .over-name { font-size: 26px; }
+  .over-stat { font-size: clamp(22px, 4vw, 32px); }
 }
 /* portrait phones: the 16:9 stage is tiny, so the input box + health/wpm move under it at readable size */
 @media (orientation: portrait) {

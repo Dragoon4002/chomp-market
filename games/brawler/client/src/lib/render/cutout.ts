@@ -1,5 +1,6 @@
 // Cutout heroes: image parts cut in Blender (games/brawler/sprites/cutout/cut.py) driven by the same Pose as rig.ts.
 // The source art is the idle pose, so every bone rotates by (pose - POSES.idle). Render-only.
+import { BASE } from '../nav.ts';
 import { POSES, type Pose } from './rig.ts';
 import type { Dna } from '../genes.ts';
 
@@ -23,7 +24,7 @@ export const tintOf = (dna: Dna) => `hue-rotate(${(dna.hue * 5 + dna.accent) % 3
 export function hero(name: string): Hero | null {
   if (!heroes.has(name)) {
     heroes.set(name, null);
-    const dir = `/chars/${name}/cutout/`;
+    const dir = `${BASE}/chars/${name}/cutout/`;
     fetch(dir + 'rig.json').then((r) => r.json()).then(async (h: Hero) => {
       await Promise.all(h.parts.map((p) => { p.img = new Image(); p.img.src = `${dir}${p.name}.png`; return p.img.decode(); }));
       h.byName = new Map(h.parts.map((p) => [p.name, p]));
