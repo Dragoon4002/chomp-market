@@ -17,7 +17,7 @@ type AnimRef = { current: { kind: Anim; at: number } };
 const W = 1672, H = 941; // design stage, scaled uniformly to fit
 const art = (p: string) => `/g/tomb-delve/art/${p}.svg?v=2`;
 const bg = (p: string) => ({ backgroundImage: `url(${art('bg/' + p)})` });
-const sol = (l: number) => `${chain.fmt(l)} SOL`;
+const sol = (l: number) => `${chain.fmt(l)} play-SOL`; // devnet play money (mock), not real SOL
 const relicName = (t: number) => RELICS[t].name + (t === 4 ? ` #${chain.state.legendaries + 1}` : '');
 const tally = (ids: CardId[]) => Object.entries(ids.reduce<Record<string, number>>((o, id) => ({ ...o, [id]: (o[id] ?? 0) + 1 }), {}))
   .sort(([a], [b]) => CARDS[a as CardId].name.localeCompare(CARDS[b as CardId].name)) as [CardId, number][];
@@ -93,13 +93,14 @@ export default function Game() {
   const finish = (score: number, r: Run) => {
     sent.current = true;
     if (r.dead) chain.lockChar(charId, Date.now());
+    // TODO(solana): settle — score = extracted lamports (mock); real payout comes from the treasury PDA via the ER, portal submits submit_score.
     window.Chomp?.result({ score, tapeHash: sha256(JSON.stringify(tape.current)) });
   };
   const resetFx = () => { setFx({ mon: 0, monDmg: 0, me: 0, meDmg: 0 }); setGhost(null); pose('idle'); };
 
   const enter = () => {
     const runId = chain.payEntry();
-    if (!runId || !ch) return setNote('Not enough SOL for entry.');
+    if (!runId || !ch) return setNote('Not enough play-SOL for entry.');
     window.Chomp?.start();
     // TODO(solana): PER — run PDA {mint, HP, inventory, setIdx, roomIdx, pity, H hidden}; only the current room is revealed.
     const vrf = chain.requestVrf(seed + runId, 1);
@@ -112,7 +113,7 @@ export default function Game() {
   const cont = () => { act('advance', advance); setNote(''); resetFx(); setScreen('walk'); };
   const walked = () => setScreen(run && atCamp(run) ? 'camp' : 'room');
   const buy = (item: ItemId) => {
-    if (!chain.buyItem(item)) return setNote('Not enough SOL.');
+    if (!chain.buyItem(item)) return setNote('Not enough play-SOL.');
     act('buy', (r) => useItem(r, item, true), item);
     setNote(`Bought ${ITEMS[item].name}.`);
   };
@@ -143,8 +144,8 @@ export default function Game() {
     <div className="demo">
       <button onClick={() => setDemoOpen(!demoOpen)}>{demoOpen ? '× Demo' : '🛠 Demo'}</button>
       {demoOpen && <div className="demo-list">
-        <small>SOL {chain.fmt(chain.state.balance)} · treasury {chain.fmt(chain.state.treasury)}</small>
-        <button onClick={() => { chain.demo.faucet(); tick((n) => n + 1); }}>+1 SOL</button>
+        <small>play-SOL (mock) {chain.fmt(chain.state.balance)} · treasury {chain.fmt(chain.state.treasury)}</small>
+        <button onClick={() => { chain.demo.faucet(); tick((n) => n + 1); }}>+1 play-SOL</button>
         <button onClick={() => { chain.demo.unlockAll(); tick((n) => n + 1); }}>Unlock characters</button>
         <button onClick={() => { chain.demo.resetMarket(); tick((n) => n + 1); }}>Reset pawn prices</button>
         {run && !run.dead && <>
@@ -296,6 +297,7 @@ export default function Game() {
           <div className="info">
             <h2>Entry {sol(50_000_000)}</h2>
             <p>Balance {sol(chain.state.balance)}</p>
+            <p className="dim">Devnet play money (mock). No real SOL moves.</p>
             <p className="dim">Death loses everything carried and locks this monster for 1h.</p>
             {endBtn(<><img src={art('icons/sol')} alt="" />Pay entry</>, enter)}
             {btn('Back', () => setScreen('pick'))}
@@ -411,7 +413,7 @@ export default function Game() {
       {screen === 'end' && run && (
         <div className="scene center" style={bg('title-l')}>
           <h1>{run.dead ? 'Lost in the tomb' : 'Back in the sun'}</h1>
-          <p>{run.dead ? `${ch?.name} is locked for 1h. Everything carried is gone.` : `You pawned relics for ${sol(pawn.got)}.`}</p>
+          <p>{run.dead ? `${ch?.name} is locked for 1h. Everything carried is gone.` : `You pawned relics for ${sol(pawn.got)}.`} <small>(devnet play money, mock)</small></p>
           <p>Reached set {run.set} · balance {sol(chain.state.balance)}</p>
           {endBtn('Delve again', () => { setRun(null); setPop(''); setScreen('pick'); })}
         </div>
