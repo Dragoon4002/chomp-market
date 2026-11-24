@@ -1,0 +1,414 @@
+{
+ "v": 10,
+ "tile": 32,
+ "sprites": {
+  "unit.cannon": {
+   "src": "unit.cannon.svg",
+   "w": 1.25,
+   "h": 1.25,
+   "anchor": [
+    0.5,
+    0.7
+   ],
+   "tint": true,
+   "frames": 4,
+   "fps": 8
+  },
+  "unit.rapid": {
+   "src": "unit.rapid.svg",
+   "w": 1,
+   "h": 1,
+   "anchor": [
+    0.5,
+    0.7
+   ],
+   "tint": true,
+   "frames": 4,
+   "fps": 8
+  },
+  "unit.sniper": {
+   "src": "unit.sniper.svg",
+   "w": 1,
+   "h": 1,
+   "anchor": [
+    0.5,
+    0.7
+   ],
+   "tint": true,
+   "frames": 4,
+   "fps": 8
+  },
+  "unit.bulwark": {
+   "src": "unit.bulwark.svg",
+   "w": 1.25,
+   "h": 1.25,
+   "anchor": [
+    0.5,
+    0.7
+   ],
+   "tint": true,
+   "frames": 4,
+   "fps": 8
+  },
+  "unit.grunt": {
+   "src": "unit.grunt.svg",
+   "w": 1,
+   "h": 1,
+   "anchor": [
+    0.5,
+    0.7
+   ],
+   "tint": true,
+   "frames": 4,
+   "fps": 8
+  },
+  "unit.minion": {
+   "src": "unit.minion.svg",
+   "w": 0.6,
+   "h": 0.6,
+   "anchor": [
+    0.5,
+    0.7
+   ],
+   "tint": true,
+   "frames": 4,
+   "fps": 8
+  },
+  "arena": {
+   "src": "arena.png",
+   "w": 26,
+   "h": 16.6,
+   "anchor": [
+    0,
+    0
+   ],
+   "tint": false,
+   "world": [
+    -2500,
+    -3000,
+    23500,
+    13600
+   ]
+  },
+  "core": {
+   "src": "core.svg",
+   "w": 2.2,
+   "h": 2.5,
+   "anchor": [
+    0.5,
+    0.6
+   ],
+   "tint": false
+  },
+  "coreEnemy": {
+   "src": "coreEnemy.svg",
+   "w": 2.2,
+   "h": 2.5,
+   "anchor": [
+    0.5,
+    0.6
+   ],
+   "tint": false
+  },
+  "hex.base": {
+   "src": "hex.base.svg",
+   "w": 1,
+   "h": 1.35,
+   "anchor": [
+    0.5,
+    0.416
+   ],
+   "tint": false
+  },
+  "hex.baseEnemy": {
+   "src": "hex.baseEnemy.svg",
+   "w": 1,
+   "h": 1.35,
+   "anchor": [
+    0.5,
+    0.416
+   ],
+   "tint": false
+  },
+  "hex.ok": {
+   "src": "hex.ok.svg",
+   "w": 1,
+   "h": 1.1547,
+   "anchor": [
+    0.5,
+    0.5
+   ],
+   "tint": false
+  },
+  "hex.attack": {
+   "src": "hex.attack.svg",
+   "w": 1,
+   "h": 1.1547,
+   "anchor": [
+    0.5,
+    0.5
+   ],
+   "tint": false
+  },
+  "hex.bad": {
+   "src": "hex.bad.svg",
+   "w": 1,
+   "h": 1.1547,
+   "anchor": [
+    0.5,
+    0.5
+   ],
+   "tint": false
+  },
+  "ui.sword": {
+   "src": "ui.sword.svg",
+   "w": 0.6,
+   "h": 0.6,
+   "anchor": [
+    0.5,
+    0.5
+   ],
+   "tint": false
+  },
+  "ui.shield": {
+   "src": "ui.shield.svg",
+   "w": 0.6,
+   "h": 0.6,
+   "anchor": [
+    0.5,
+    0.5
+   ],
+   "tint": false
+  },
+  "card.frame": {
+   "src": "card.frame.svg",
+   "w": 2,
+   "h": 2.6,
+   "anchor": [
+    0,
+    0
+   ],
+   "tint": false,
+   "window": [
+    0.0625,
+    0.0482,
+    0.875,
+    0.7108
+   ],
+   "name": [
+    0.0781,
+    0.7711,
+    0.8438,
+    0.1807
+   ],
+   "gem": [
+    0.1406,
+    0.1024
+   ]
+  },
+  "card.cannon": {
+   "src": "card.cannon.png",
+   "w": 2,
+   "h": 2,
+   "anchor": [
+    0.5,
+    0.5
+   ],
+   "tint": true
+  },
+  "card.rapid": {
+   "src": "card.rapid.png",
+   "w": 2,
+   "h": 2,
+   "anchor": [
+    0.5,
+    0.5
+   ],
+   "tint": true
+  },
+  "card.sniper": {
+   "src": "card.sniper.png",
+   "w": 2,
+   "h": 2,
+   "anchor": [
+    0.5,
+    0.5
+   ],
+   "tint": true
+  },
+  "card.bulwark": {
+   "src": "card.bulwark.png",
+   "w": 2,
+   "h": 2,
+   "anchor": [
+    0.5,
+    0.5
+   ],
+   "tint": true
+  },
+  "card.grunt": {
+   "src": "card.grunt.png",
+   "w": 2,
+   "h": 2,
+   "anchor": [
+    0.5,
+    0.5
+   ],
+   "tint": true
+  },
+  "fx.shot": {
+   "src": "fx.shot.svg",
+   "w": 0.4,
+   "h": 0.4,
+   "anchor": [
+    0.5,
+    0.5
+   ],
+   "tint": true
+  },
+  "fx.splash": {
+   "src": "fx.splash.svg",
+   "w": 2,
+   "h": 2,
+   "anchor": [
+    0.5,
+    0.5
+   ],
+   "tint": true,
+   "frames": 4,
+   "fps": 12
+  },
+  "fx.hit": {
+   "src": "fx.hit.svg",
+   "w": 0.6,
+   "h": 0.6,
+   "anchor": [
+    0.5,
+    0.5
+   ],
+   "tint": false,
+   "frames": 3,
+   "fps": 15
+  },
+  "ui.energy": {
+   "src": "ui.energy.svg",
+   "w": 1,
+   "h": 1,
+   "anchor": [
+    0.5,
+    0.5
+   ],
+   "tint": false
+  },
+  "hud.bar": {
+   "src": "hud.bar.svg",
+   "w": 4.25,
+   "h": 1.25,
+   "anchor": [
+    0,
+    0
+   ],
+   "tint": false,
+   "slot": [
+    0.2794,
+    0.575,
+    0.6618,
+    0.25
+   ]
+  },
+  "hud.avatar": {
+   "src": "hud.avatar.svg",
+   "w": 1.5,
+   "h": 1.5,
+   "anchor": [
+    0,
+    0
+   ],
+   "tint": true
+  },
+  "hud.timer": {
+   "src": "hud.timer.svg",
+   "w": 3.5,
+   "h": 1.75,
+   "anchor": [
+    0,
+    0
+   ],
+   "tint": false,
+   "text": [
+    0.1518,
+    0.3393,
+    0.6964,
+    0.4643
+   ]
+  },
+  "hud.tray": {
+   "src": "hud.tray.svg",
+   "w": 30,
+   "h": 4.25,
+   "anchor": [
+    0,
+    0
+   ],
+   "tint": false,
+   "gem": [
+    0.0633,
+    0.5765
+   ],
+   "bar": [
+    0.11,
+    0.5176,
+    0.3333,
+    0.1176
+   ],
+   "label": [
+    0.45,
+    0.4706,
+    0.06,
+    0.2118
+   ],
+   "cards": [
+    [
+     0.62,
+     0.2353,
+     0.0667,
+     0.6118
+    ],
+    [
+     0.6933,
+     0.2353,
+     0.0667,
+     0.6118
+    ],
+    [
+     0.7667,
+     0.2353,
+     0.0667,
+     0.6118
+    ],
+    [
+     0.84,
+     0.2353,
+     0.0667,
+     0.6118
+    ]
+   ],
+   "next": [
+    0.9217,
+    0.3765,
+    0.05,
+    0.4588
+   ]
+  },
+  "hud.energySeg": {
+   "src": "hud.energySeg.svg",
+   "w": 1,
+   "h": 0.5,
+   "anchor": [
+    0,
+    0
+   ],
+   "tint": false
+  }
+ }
+}
