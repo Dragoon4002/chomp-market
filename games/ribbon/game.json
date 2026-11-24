@@ -7,8 +7,7 @@
     "racing",
     "pvp"
   ],
-  "url": "https://ribbon-rush.vercel.app",
   "settle": "frames",
   "license": "MIT",
-  "soon": true
+  "entry": "index.html"
 }

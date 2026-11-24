@@ -15,10 +15,10 @@ button:disabled { opacity: 0.45; cursor: default; }
 /* .art = the image box sized like background-size:cover; children use % of it so they keep their spot in the scene. */
 .title { position: relative; height: 100dvh; overflow: hidden; background: #1a0b3d; }
 /* letterbox fill: blurred copy of the art behind the fitted one */
-.title::before { content: ''; position: absolute; inset: -30px; background: url(/title.png) center / cover; filter: blur(18px) brightness(0.45); }
+.title::before { content: ''; position: absolute; inset: -30px; background: url(../../public/title.png) center / cover; filter: blur(18px) brightness(0.45); }
 .art { --aw: 100vw; /* full width; vertical overflow cropped evenly, chips/gear clamp into view */ position: absolute; width: var(--aw); aspect-ratio: 1671 / 941;
   left: calc((100vw - var(--aw)) / 2); top: calc((100dvh - var(--aw) * 0.5628) / 2);
-  background: url(/title.png) center / 100% 100% no-repeat; }
+  background: url(../../public/title.png) center / 100% 100% no-repeat; }
 /* menu buttons: placed + sized in % of the art, text in cqw (art width) so they scale with the scene */
 .art { container-type: inline-size; }
 .art .hot-play, .art .hot-how, .art .hot-matches { position: absolute; min-height: 0; padding: 0; }
@@ -52,6 +52,13 @@ button:disabled { opacity: 0.45; cursor: default; }
   .art .hot-how, .art .hot-matches { width: 14%; } .art .hot-how { left: 35.5%; } .art .hot-matches { left: 50.5%; }
   .title .counters { position: fixed; z-index: 2; top: 14px; right: 16px; left: 16px; justify-content: flex-end; flex-wrap: wrap; }
   .title .gear { position: fixed; z-index: 2; right: 16px; bottom: 16px; width: 52px; }
+}
+
+/* small landscape frame (portal iframe on phones, ~356x200): drop the px floors so labels fit their art slots; chips shrink */
+@media (max-width: 640px) and (min-aspect-ratio: 1/1) {
+  .art .hot-play { font-size: 3.4cqw; } .art .hot-how, .art .hot-matches { font-size: 1.9cqw; white-space: nowrap; }
+  .title .counters { top: 4%; transform: scale(0.6); transform-origin: top right; }
+  .title .gear { width: 30px; right: 8px; bottom: 8px; }
 }
 
 /* ---------- modals ---------- */
@@ -166,7 +173,7 @@ button.link { background: none; border: 0; color: var(--cyan); padding: 0; text-
 
 /* ---------- duel page (references/Neon Ribbon Rush Duel.png) ---------- */
 .duel { position: relative; isolation: isolate; height: 100dvh; padding: 14px 24px 18px; display: flex; flex-direction: column; align-items: center; gap: 8px; overflow: hidden; }
-.duel-bg { position: fixed; inset: -10px; z-index: -1; background: url(/title.png) center / cover; filter: blur(2px) brightness(0.62) saturate(1.15); }
+.duel-bg { position: fixed; inset: -10px; z-index: -1; background: url(../../public/title.png) center / cover; filter: blur(2px) brightness(0.62) saturate(1.15); }
 .duel-top { align-self: stretch; display: flex; align-items: flex-start; justify-content: space-between; }
 .logo { display: flex; flex-direction: column; align-items: flex-start; padding: 0; border: 0; background: none; line-height: 0.85; font-size: 34px; font-weight: 800; font-style: italic; text-transform: uppercase; letter-spacing: 0.01em; }
 .logo span { background: linear-gradient(180deg, #fff, #d9ccff); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 2px 0 #3b1a7a) drop-shadow(0 0 10px rgba(46, 230, 255, 0.6)); }
