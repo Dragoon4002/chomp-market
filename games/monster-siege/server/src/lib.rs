@@ -124,8 +124,41 @@ pub fn router(app: Arc<App>) -> axum::Router {
     axum::Router::new().fallback(ws_handler).with_state(app)
 }
 
-async fn ws_handler(State(app): State<Arc<App>>, ws: WebSocketUpgrade) -> Response {
-    ws.max_message_size(MAX_MSG).max_frame_size(MAX_MSG).on_upgrade(move |s| run(app, s))
+// One port for page + relay (so a single tunnel works): upgrades go to the relay, plain GETs get build/ files.
+async fn ws_handler(
+    State(app): State<Arc<App>>,
+    ws: Result<WebSocketUpgrade, axum::extract::ws::rejection::WebSocketUpgradeRejection>,
+    uri: axum::http::Uri,
+) -> Response {
+    match ws {
+        Ok(ws) => ws.max_message_size(MAX_MSG).max_frame_size(MAX_MSG).on_upgrade(move |s| run(app, s)),
+        Err(_) => static_file(uri.path()),
+    }
+}
+
+// ponytail: tiny static server (no tower-http). Env STATIC overrides the build/ dir.
+fn static_file(path: &str) -> Response {
+    use axum::http::{StatusCode, header};
+    use axum::response::IntoResponse;
+    let rel = path.trim_start_matches('/');
+    let rel = if rel.is_empty() || rel.ends_with('/') { format!("{rel}index.html") } else { rel.to_string() };
+    if rel.split('/').any(|seg| seg == ".." || seg.starts_with('.')) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let dir = std::env::var("STATIC").unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../build").into());
+    let Ok(body) = std::fs::read(std::path::Path::new(&dir).join(&rel)) else { // sync read: files are small
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let ct = match rel.rsplit('.').next().unwrap_or("") {
+        "html" => "text/html; charset=utf-8",
+        "js" | "mjs" => "text/javascript",
+        "json" => "application/json",
+        "png" => "image/png",
+        "svg" => "image/svg+xml",
+        "css" => "text/css",
+        _ => "application/octet-stream",
+    };
+    ([(header::CONTENT_TYPE, ct), (header::CACHE_CONTROL, "no-cache")], body).into_response()
 }
 
 fn str_of(v: &Value, max: usize) -> String {
@@ -153,7 +186,14 @@ async fn run(app: Arc<App>, sock: WebSocket) {
     });
     let mut s = Session { app, id: rand::random(), tx, at: None, plays: (Instant::now(), 0) };
     let (mut window, mut n) = (Instant::now(), 0);
-    while let Some(Ok(msg)) = stream.next().await {
+    let born = Instant::now();
+    let why = loop {
+        let msg = match stream.next().await {
+            None => break "eof".to_string(),
+            Some(Err(e)) => break format!("error: {e}"),
+            Some(Ok(Message::Close(f))) => break format!("close {:?}", f.map(|f| (f.code, f.reason.to_string()))),
+            Some(Ok(m)) => m,
+        };
         let Message::Text(raw) = msg else { continue };
         if window.elapsed() >= Duration::from_secs(1) {
             (window, n) = (Instant::now(), 0);
@@ -165,9 +205,12 @@ async fn run(app: Arc<App>, sock: WebSocket) {
         if let Ok(m) = serde_json::from_str::<Value>(&raw)
             && let Err(e) = s.on_msg(&m)
         {
+            eprintln!("[{:x}] error reply: {e}", s.id & 0xffff);
             send(&s.tx, &json!({ "t": "error", "msg": e }));
         }
-    }
+    };
+    // ponytail: one log line per socket end; enough to tell network drops from protocol errors
+    eprintln!("[{:x}] socket end after {:.1}s room={:?}: {why}", s.id & 0xffff, born.elapsed().as_secs_f32(), s.at);
     s.leave();
 }
 
@@ -212,6 +255,7 @@ impl Session {
                     plays: vec![],
                     over: [false; 2],
                 };
+                eprintln!("[{:x}] host {code}", self.id & 0xffff);
                 seated(&self.tx, &code, 0, &room.tokens[0]);
                 rooms.insert(code.clone(), room);
                 self.at = Some((code, 0));
@@ -225,6 +269,7 @@ impl Session {
                 r.loadouts[1] = loadout_of(&m["loadout"]);
                 r.conns[1] = Some((self.id, self.tx.clone()));
                 r.phase = Phase::Count(COUNT_TICKS);
+                eprintln!("[{:x}] join {code}", self.id & 0xffff);
                 seated(&self.tx, &code, 1, &r.tokens[1]);
                 r.peer();
                 self.at = Some((code, 1));
@@ -237,6 +282,7 @@ impl Session {
                 let r = rooms.get_mut(&code).filter(|r| r.phase != Phase::Wait).ok_or("Room not found")?;
                 let seat = (0..2).find(|&i| !tok.is_empty() && r.tokens[i] == tok).ok_or("Bad seat token")?;
                 r.conns[seat] = Some((self.id, self.tx.clone()));
+                eprintln!("[{:x}] rejoin {code} seat {seat}", self.id & 0xffff);
                 seated(&self.tx, &code, seat, &r.tokens[seat]);
                 if r.phase == Phase::Live {
                     send(&self.tx, &r.start_msg()); // full play log: client re-indexes and catches up

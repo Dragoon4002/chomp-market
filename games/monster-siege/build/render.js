@@ -70,10 +70,12 @@ function rrect(ctx, x, y, w, h, r, fill, stroke, lw = 2) {
   if (fill) { ctx.fillStyle = fill; ctx.fill(); }
   if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.stroke(); }
 }
-function text(ctx, str, x, y, size, col = '#fff', align = 'center') {
+// Outlined text, never under 11 px (small phones); maxW squeezes it horizontally rather than overflow.
+function text(ctx, str, x, y, size, col = '#fff', align = 'center', maxW = undefined) {
+  size = Math.max(11, size);
   ctx.font = `800 ${Math.round(size)}px system-ui,sans-serif`; ctx.textAlign = align; ctx.textBaseline = 'middle';
-  ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(2, size * 0.18); ctx.strokeStyle = '#0b0c1f'; ctx.strokeText(str, x, y);
-  ctx.fillStyle = col; ctx.fillText(str, x, y);
+  ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(2, size * 0.18); ctx.strokeStyle = '#0b0c1f'; ctx.strokeText(str, x, y, maxW);
+  ctx.fillStyle = col; ctx.fillText(str, x, y, maxW);
 }
 
 // Tray rects (fractions of the tray), from the hud.tray manifest entry; this copy is the no-art fallback (landscape:
@@ -87,16 +89,18 @@ const worldRect = () => (art.sprites?.arena?.world && imgs.arena ? art.sprites.a
 
 // Layout in px. T = px per hex. Fit the board (+1.2 hex each side, HUD strip above, tray below); the arena art
 // around it may spill off-screen. The tray shrinks to the screen width if needed.
-const HUD_T = 1.7, GAP_T = 0.3;
-export function layout(cw, ch) {
+// sa = safe-area insets {l,t,r,b} px: board, HUD and tray stay inside them (notch / home bar); only art spills out.
+const HUD_T = 1.7, GAP_T = 0.3, NO_SA = { l: 0, t: 0, r: 0, b: 0 };
+export function layout(cw, ch, sa = NO_SA) {
   const wr = worldRect(), aw = (wr[2] - wr[0]) / 1000, ah = (wr[3] - wr[1]) / 1000;
   const tp = { ...TRAY, ...art.sprites?.['hud.tray'] }, fw = (W + 2400) / 1000, fh = HUD_T + H / 1000 + GAP_T + tp.h;
-  const T = Math.max(6, Math.min(cw / fw, ch / fh)), k = T / 1000;
-  const top = Math.max(0, (ch - fh * T) / 2), by = top + HUD_T * T; // by = screen y of world y 0
-  const ts = Math.min(1, cw / (tp.w * T)), tw = tp.w * T * ts, th = tp.h * T * ts;
-  const tray = { x: (cw - tw) / 2, y: Math.min(by + (H / 1000 + GAP_T) * T, ch - th), w: tw, h: th };
+  const sw = cw - sa.l - sa.r, sh = ch - sa.t - sa.b; // safe rect size
+  const T = Math.max(6, Math.min(sw / fw, sh / fh)), k = T / 1000;
+  const top = sa.t + Math.max(0, (sh - fh * T) / 2), by = top + HUD_T * T; // by = screen y of world y 0
+  const ts = Math.min(1, sw / (tp.w * T)), tw = tp.w * T * ts, th = tp.h * T * ts;
+  const tray = { x: sa.l + (sw - tw) / 2, y: Math.min(by + (H / 1000 + GAP_T) * T, sa.t + sh - th), w: tw, h: th };
   const R = ([x, y, w, h]) => ({ x: tray.x + x * tray.w, y: tray.y + y * tray.h, w: w * tray.w, h: h * tray.h });
-  return { T, k, cw, ch, wr, top, ax: cw / 2 - (W / 2 - wr[0]) * k, ay: by + wr[1] * k, by, aw, ah, tray, cards: tp.cards.map(R), next: R(tp.next),
+  return { T, k, cw, ch, sx: sa.l, sw, wr, top, ax: sa.l + sw / 2 - (W / 2 - wr[0]) * k, ay: by + wr[1] * k, by, aw, ah, tray, cards: tp.cards.map(R), next: R(tp.next),
     bar: R(tp.bar), label: tp.label && R(tp.label), gem: [tray.x + tp.gem[0] * tray.w, tray.y + tp.gem[1] * tray.h], portrait: ch > cw };
 }
 // Seat 1 sees the board point-mirrored, so every player has their own core on the right.
@@ -144,9 +148,9 @@ function hexOver(ctx, L, flip, h, k, col) {
 }
 
 // ui: {seat, sel, drag:{x,y,moved}|null, ms, banner, names, ai, showRange}
+// ctx arrives pre-scaled to CSS px (caller owns the DPR transform).
 export function render(ctx, cw, ch, s, ui) {
-  const L = layout(cw, ch), { T } = L, flip = ui.seat === 1, P = (x, y) => toScreen(L, flip, x, y);
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const L = layout(cw, ch, ui.sa), { T } = L, flip = ui.seat === 1, P = (x, y) => toScreen(L, flip, x, y);
   ctx.clearRect(0, 0, cw, ch);
   ctx.fillStyle = '#1a1840'; ctx.fillRect(0, 0, cw, ch);
   if (!pic(ctx, 'arena', L.ax, L.ay, L.aw * T, L.ah * T)) { // no baked arena: canvas hexes (zones, path, rocks)
@@ -228,6 +232,7 @@ export function render(ctx, cw, ch, s, ui) {
     }
   }
   hud(ctx, L, s, ui);
+  return L; // caller hit-tests input against the layout actually drawn
 }
 
 // Team plate (hud.bar, neutral): avatar overlaps the outer 28%, team fill in `slot`, name + % above it. right = mirrored.
@@ -248,8 +253,8 @@ function plate(ctx, x, y, right, name, ai, f, col, T) {
   const nx = right ? bx + bw - pad : bx + pad;
   text(ctx, name, nx, ty, fs, '#fff', right ? 'right' : 'left');
   if (ai) {
-    const tx = nx + ctx.measureText(name).width + T * 0.12, tw = fs * 1.3;
-    rrect(ctx, tx, ty - fs * 0.45, tw, fs * 0.9, 3, '#0b0c1f', '#ffffff55', 1);
+    const tx = nx + ctx.measureText(name).width + T * 0.12, th = Math.max(fs * 0.9, 13), tw = th * 1.45;
+    rrect(ctx, tx, ty - th / 2, tw, th, 3, '#0b0c1f', '#ffffff55', 1);
     text(ctx, 'AI', tx + tw / 2, ty, fs * 0.6, '#fff');
   }
   const [aw, ah] = sz('hud.avatar', 1.5, 1.5), ax = right ? x + w + T * 0.1 - aw * T : x - T * 0.1, ay = y + h / 2 - (ah * T) / 2;
@@ -262,13 +267,13 @@ function plate(ctx, x, y, right, name, ai, f, col, T) {
 }
 
 function hud(ctx, L, s, ui) {
-  const { T, cw, tray } = L, me = s.P[ui.seat], foe = s.P[1 - ui.seat], fy = L.top;
+  const { T, tray } = L, cw = L.sw, x0 = L.sx, me = s.P[ui.seat], foe = s.P[1 - ui.seat], fy = L.top;
   // top: foe plate at the screen's top-left, clock centre, me plate top-right
   const [pw] = sz('hud.bar', 4.25, 1.25), py = fy + 0.2 * T;
-  plate(ctx, 0.3 * T, py, false, ui.names?.[1 - ui.seat] ?? 'Foe', ui.ai, foe.core / CORE_HP, FOE, T);
-  plate(ctx, cw - (0.3 + pw) * T, py, true, ui.names?.[ui.seat] ?? 'You', false, me.core / CORE_HP, ME, T);
+  plate(ctx, x0 + 0.3 * T, py, false, ui.names?.[1 - ui.seat] ?? 'Foe', ui.ai, foe.core / CORE_HP, FOE, T);
+  plate(ctx, x0 + cw - (0.3 + pw) * T, py, true, ui.names?.[ui.seat] ?? 'You', false, me.core / CORE_HP, ME, T);
   const ot = s.t >= MATCH_T, left = Math.max(0, (ot ? MATCH_T + OT_T : MATCH_T) - s.t), sec = Math.ceil(left / 30);
-  const [tW, tH] = sz('hud.timer', 3.5, 1.75), tw = tW * T, th = tH * T, tx = (cw - tw) / 2, ty = fy;
+  const [tW, tH] = sz('hud.timer', 3.5, 1.75), tw = tW * T, th = tH * T, tx = x0 + (cw - tw) / 2, ty = fy;
   if (!pic(ctx, 'hud.timer', tx, ty, tw, th)) {
     rrect(ctx, tx + tw * 0.1, ty + th * 0.25, tw * 0.8, th * 0.6, th * 0.15, '#0b0c1f', GOLD, 3);
   }
@@ -304,7 +309,7 @@ function hud(ctx, L, s, ui) {
     card(ctx, r.x, r.y - up, r.w, r.h, c, T, c.cost * 60 > me.e);
   });
   const nc = me.cards[me.q[0]];
-  text(ctx, 'Next', L.next.x + L.next.w / 2, L.next.y - T * 0.3, T * 0.36, '#fff');
+  text(ctx, 'Next', L.next.x + L.next.w / 2, L.next.y - Math.max(T * 0.3, 8), T * 0.36, '#fff');
   card(ctx, L.next.x, L.next.y, L.next.w, L.next.h, nc, T, false);
   if (ui.drag?.moved && ui.sel != null) { // ghost: monster + role icon for the hovered hex (red cross = invalid)
     const c = me.cards[me.hand[ui.sel]], { x, y } = ui.drag, { kind } = dropAt(L, s, ui, x, y), uk = c.m ? 'unit.' + c.arch : 'unit.grunt';
@@ -320,12 +325,12 @@ function hud(ctx, L, s, ui) {
   }
   const midY = L.by + (H * L.k) / 2;
   if (ui.banner) {
-    ctx.fillStyle = '#000a'; ctx.fillRect(0, midY - 1.2 * T, cw, 2.4 * T);
-    text(ctx, ui.banner, cw / 2, midY, T * 0.9, '#fff');
+    ctx.fillStyle = '#000a'; ctx.fillRect(0, midY - 1.2 * T, L.cw, 2.4 * T);
+    text(ctx, ui.banner, x0 + cw / 2, midY, T * 0.9, '#fff');
   }
   if (L.portrait) { // no portrait layout: scaled board + hint
-    ctx.fillStyle = '#000b'; ctx.fillRect(0, midY - 1.4 * T, cw, 2.8 * T);
-    text(ctx, '⟳ Rotate your device', cw / 2, midY, Math.max(14, T * 0.7), '#ffcf4a');
+    ctx.fillStyle = '#000b'; ctx.fillRect(0, midY - 1.4 * T, L.cw, 2.8 * T);
+    text(ctx, '⟳ Rotate your device', x0 + cw / 2, midY, Math.max(14, T * 0.7), '#ffcf4a');
   }
 }
 
@@ -345,7 +350,7 @@ function card(ctx, x, y, w, h, c, T, dim) {
     hex(ctx, x + gx * w, y + gy * h, w * 0.13); ctx.fillStyle = MAG; ctx.fill();
   }
   const name = c.m ? c.m.name : 'Grunts';
-  text(ctx, name, x + (nx + nw / 2) * w, y + (ny + nh / 2) * h, Math.min(nh * h * 0.6, (nw * w * 1.6) / name.length), '#fff');
+  text(ctx, name, x + (nx + nw / 2) * w, y + (ny + nh / 2) * h, Math.min(nh * h * 0.6, (nw * w * 1.6) / name.length), '#fff', 'center', nw * w);
   if (dim) { ctx.fillStyle = '#0b0c1fa8'; ctx.beginPath(); ctx.roundRect(x, y, w, h, w * 0.08); ctx.fill(); }
   text(ctx, String(COST[c.arch]), x + gx * w, y + gy * h, w * 0.17, '#fff');
 }

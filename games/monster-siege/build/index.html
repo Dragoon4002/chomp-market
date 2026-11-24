@@ -2,14 +2,20 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, interactive-widget=resizes-content">
+<meta name="theme-color" content="#12132b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <title>Monster Siege</title>
 <link rel="icon" href="data:,">
 <script src="/chomp-sdk.js"></script>
 <style>
-  html, body { margin: 0; height: 100%; background: #12132b; color: #eee; font: 15px system-ui, sans-serif; overflow: hidden; }
-  canvas { display: block; width: 100vw; height: 100vh; touch-action: none; }
-  #menu { position: fixed; inset: 0; overflow: auto; padding: 12px; box-sizing: border-box; background: #17131fee; }
+  html, body { margin: 0; position: fixed; inset: 0; width: 100%; height: 100vh; height: 100dvh; background: #12132b; color: #eee; font: 15px system-ui, sans-serif;
+    overflow: hidden; overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  #sa { position: fixed; visibility: hidden; pointer-events: none; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  #menu { position: fixed; inset: 0; overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; box-sizing: border-box; background: #17131fee;
+    padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
   #menu[hidden] { display: none; }
   .wrap { max-width: 520px; margin: 0 auto; }
   h1 { margin: 4px 0; font-size: 26px; } p { margin: 4px 0 10px; color: #aaa; }
@@ -21,14 +27,28 @@
   .tag { font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 4px; background: #333; }
   .deck .tag { background: #c86bff; color: #000; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; align-items: center; }
-  button.b { padding: 10px 14px; border-radius: 8px; border: 0; background: #4fb3ff; color: #000; font: 700 15px system-ui; cursor: pointer; }
+  button.b { min-height: 44px; padding: 10px 14px; border-radius: 8px; border: 0; background: #4fb3ff; color: #000; font: 700 15px system-ui; cursor: pointer; }
   button.b.alt { background: #2f2a3a; color: #eee; } button.b:disabled { opacity: .4; cursor: default; }
-  input { padding: 9px; width: 70px; border-radius: 8px; border: 1px solid #444; background: #111; color: #eee; font: 700 15px monospace; text-transform: uppercase; }
+  input { min-height: 44px; box-sizing: border-box; padding: 9px; width: 84px; -webkit-user-select: text; user-select: text; border-radius: 8px; border: 1px solid #444; background: #111; color: #eee; font: 700 15px monospace; text-transform: uppercase; }
   #msg { color: #ffcf4a; min-height: 20px; }
+  @media (max-height: 500px) { /* landscape phones: compact menu, it scrolls inside #menu */
+    .wrap { max-width: 640px; } h1 { font-size: 20px; } p { font-size: 13px; margin: 2px 0 6px; } .row { margin: 8px 0; }
+    .pool { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); } .mon { min-height: 44px; padding: 4px 8px; }
+  }
+  #fs { position: fixed; left: 0; top: 0; z-index: 5; width: 36px; height: 36px; border-radius: 8px; border: 0; background: #0b0c1fb0; color: #fff; font: 20px system-ui; padding: 0; }
+  #fs[hidden] { display: none; }
+  /* landscape only: portrait phones get a full-screen tap target that goes fullscreen + locks landscape */
+  #rot { display: none; position: fixed; inset: 0; z-index: 10; border: 0; background: #12132b; color: #eee; font: 700 18px system-ui; place-content: center; gap: 14px; text-align: center; }
+  #rot .tap { padding: 22px 34px; border-radius: 14px; background: #4fb3ff; color: #000; font-size: 26px; }
+  #rot.nofs .tap { display: none; } #rot small { color: #ffcf4a; font-size: 18px; }
+  @media (orientation: portrait) and (pointer: coarse) { #rot { display: grid; } }
 </style>
 </head>
 <body>
 <canvas id="cv"></canvas>
+<div id="sa"></div>
+<button id="fs" hidden aria-label="Toggle fullscreen">⛶</button>
+<button id="rot"><span class="tap">▶ Tap to play</span><small>⟳ Rotate your device to landscape</small></button>
 <div id="menu"><div class="wrap">
   <h1>Monster Siege</h1>
   <p>Tap a monster to toggle <b style="color:#c86bff">deck</b> / bench: up to 8 cards, empty slots become Grunts. In battle, drag a card onto the <b style="color:#ffb02e">path ⚔</b> to send its squad from your core, or onto free ground in <b style="color:#4fb3ff">your zone 🛡</b> to station it as a defender. Best in landscape.</p>
@@ -40,18 +60,18 @@
   </div>
   <div class="row">
     <button class="b alt" id="host">Host live 1v1</button>
-    <input id="code" maxlength="4" placeholder="CODE"><button class="b alt" id="join">Join</button>
+    <input id="code" maxlength="4" placeholder="CODE" inputmode="text" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false"><button class="b alt" id="join">Join</button>
   </div>
   <div id="msg"></div>
 </div></div>
 <script type="module">
 import { newMatch, step, demoMonster, demoLoadout, archetypeOf, scoreOf, GLYPH, COST, HZ } from './sim.js?v=2';
-import { render, layout, dropAt, loadArt } from './render.js?v=4';
+import { render, dropAt, loadArt } from './render.js?v=5';
 import { makeBot } from './bot.js?v=2';
-import { connectLive } from './net.js?v=2';
+import { connectLive } from './net.js?v=4';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d'), $ = (id) => document.getElementById(id);
-const menu = $('menu'), msg = (t) => ($('msg').textContent = t);
+const menu = $('menu'), msg = (t) => { $('msg').textContent = t; $('msg').scrollIntoView({ block: 'nearest' }); };
 const qs = new URLSearchParams(location.search);
 
 // ---- session: portal sends it after ready(); standalone falls back after 300 ms ----
@@ -91,14 +111,27 @@ function drawPool() {
 // ---- match ----
 let g = null; // {s, seat, bot, live, pending, countdown, ended, names}
 const hist = {}; // live: state signature every 30 ticks, for the two-tab desync check
-window.siege = { hist, get g() { return g; } };
-const ui = { seat: 0, sel: null, drag: null, ms: 0, banner: '', names: ['You', 'Bot'] };
+window.siege = { hist, get g() { return g; }, get L() { return L; }, get ui() { return ui; } }; // debug / headless checks
+const ui = { seat: 0, sel: null, drag: null, ms: 0, banner: '', names: ['You', 'Bot'], sa: { l: 0, t: 0, r: 0, b: 0 } };
+let L = null; // layout of the last drawn frame (input hit-tests against it)
+
+// keep the phone awake during a match (released by the OS when hidden; re-requested on return)
+let wake = null;
+async function awake(on) {
+  try {
+    if (!on) { const w = wake; wake = null; await w?.release(); }
+    else if (!wake || wake.released) wake = await navigator.wakeLock?.request('screen');
+  } catch { /* unsupported / denied / not visible */ }
+}
+document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && g && !g.ended && awake(true));
 
 function begin(seed, loadouts, seat, extra) {
-  g = { s: newMatch(seed, loadouts), seat, pending: [], countdown: 3 * HZ, ended: false, acc: 0, ...extra };
-  ui.seat = seat; ui.sel = null; ui.drag = null;
+  g = { s: newMatch(seed, loadouts), seed, tape: [], seat, pending: [], countdown: 3 * HZ, ended: false, acc: 0, ...extra };
+  ui.seat = seat; ui.sel = null; ui.drag = null; ui.peer = '';
   menu.hidden = true;
+  awake(true);
 }
+const toMenu = (text) => { menu.hidden = false; ui.banner = ''; g = null; L = null; awake(false); msg(text); };
 function startBot(level) {
   if (!session) return msg('Connecting…');
   const seed = session.seedU;
@@ -113,7 +146,13 @@ function startLive(code) {
       room: (m) => msg(`Room ${m.code} — waiting for opponent… (share the code)`),
       start: (m) => { begin(m.seed >>> 0, m.loadouts, live.seat, { live, countdown: 0 }); chomp('start'); ui.names = live.seat ? ['Host', 'You'] : ['You', 'Guest']; ui.ai = false; },
       error: (e) => msg(e),
-      peer: (m) => { if (!g && m.conn?.every(Boolean)) msg('Opponent joined. Starting…'); if (g?.live === live && !g.ended) ui.peer = m.closed ? 'connection lost' : m.conn?.every(Boolean) ? '' : 'opponent disconnected…'; },
+      peer: (m) => {
+        if (!g && m.conn?.every(Boolean)) msg('Opponent joined. Starting…');
+        if (!g && m.closed) msg('Connection lost');
+        if (g?.live !== live || g.ended) return;
+        ui.peer = m.closed ? 'Connection lost' : m.conn?.every(Boolean) ? '' : 'Opponent disconnected…';
+        if (m.closed) setTimeout(() => g?.live === live && !g.ended && toMenu('Connection lost'), 4000);
+      },
       forfeit: (m) => g?.live === live && finish({ winner: m.winner, reason: 'forfeit' }),
     },
   });
@@ -125,9 +164,15 @@ function finish(over) {
   ui.banner = draw ? 'Draw' : won ? 'Victory!' : 'Defeat';
   // TODO(solana): VRF 10% skill-token drop roll for the winner.
   console.log('match over', over.winner, over.reason, g.s.t);
-  chomp('result', { winner: draw ? 'draw' : won ? 'you' : 'opponent', score: scoreOf(g.s, me), reason: over.reason });
+  const res = { winner: draw ? 'draw' : won ? 'you' : 'opponent', score: scoreOf(g.s, me), reason: over.reason };
+  // tapeHash = sha256(seed + input tape), hex; no subtle (insecure context) → send without it
+  const tape = new TextEncoder().encode(JSON.stringify([g.seed, g.tape]));
+  Promise.resolve(crypto.subtle?.digest('SHA-256', tape))
+    .then((d) => d && (res.tapeHash = Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, '0')).join('')), () => {})
+    .then(() => chomp('result', res));
   if (g.live) { g.live.over(); g.live.close(); }
-  setTimeout(() => { menu.hidden = false; ui.banner = ''; g = null; msg(`Last match: ${draw ? 'draw' : won ? 'win' : 'loss'} (${over.reason})`); }, 3000);
+  awake(false);
+  setTimeout(() => toMenu(`Last match: ${draw ? 'draw' : won ? 'win' : 'loss'} (${over.reason})`), 3000);
 }
 
 function tick() {
@@ -135,7 +180,9 @@ function tick() {
   if (g.live) {
     let n = 0;
     while (g.s.t < g.live.beat && !g.s.over && n++ < 60) {
-      g.s = step(g.s, g.live.inputsAt(g.s.t)); // catch up after a stall
+      const ins = g.live.inputsAt(g.s.t);
+      if (ins.length) g.tape.push([g.s.t, ins]);
+      g.s = step(g.s, ins); // catch up after a stall
       if (g.s.t % 30 === 0) hist[g.s.t] = JSON.stringify([g.s.P.map((p) => [p.core, p.e, p.hand]), g.s.units.map((u) => [u.x, u.y, u.hp])]);
     }
     return;
@@ -144,12 +191,13 @@ function tick() {
   const ins = g.pending.splice(0);
   const b = g.bot(s); if (b) ins.push(b);
   const a = g.self?.(s); if (a) ins.push(a);
+  if (ins.length) g.tape.push([s.t, ins]);
   g.s = step(s, ins);
 }
 let last = 0;
 function frame(now) {
   const dt = Math.min(250, now - (last || now)); last = now; ui.ms = now;
-  const dpr = devicePixelRatio || 1, w = innerWidth, h = innerHeight;
+  const dpr = Math.min(2, devicePixelRatio || 1), w = cv.clientWidth, h = cv.clientHeight; // DPR capped: 3x backing store costs fill rate
   if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
   if (g) {
     if (!g.ended) {
@@ -157,35 +205,81 @@ function frame(now) {
       else for (g.acc += g.self ? 400 : dt; g.acc >= 1000 / HZ && !g.s.over; g.acc -= 1000 / HZ) tick();
       if (g.s.over) finish(g.s.over);
     }
-    if (!g.ended) ui.banner = g.countdown > 0 ? String(Math.ceil(g.countdown / HZ)) : g.live && g.s.t >= g.live.beat && ui.peer ? ui.peer : '';
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.save(); ctx.scale(dpr, dpr); render(ctx, w, h, g.s, ui); ctx.restore();
-  } else { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height); }
+    if (!g.ended) ui.banner = g.countdown > 0 ? String(Math.ceil(g.countdown / HZ)) : g.live?.down ? 'Reconnecting…' : g.live && g.s.t >= g.live.beat ? ui.peer : '';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    L = render(ctx, w, h, g.s, ui);
+    const fx = Math.round(L.sx + L.sw / 2 + 1.75 * L.T + 8), fy = Math.round(L.top + 0.3 * L.T), pos = `translate(${fx}px,${fy}px)`; // right of the clock
+    if (fs.style.transform !== pos) fs.style.transform = pos;
+    fs.hidden = !document.fullscreenEnabled;
+  } else { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height); fs.hidden = true; }
   requestAnimationFrame(frame);
 }
 
 // ---- input: drag a card onto a hex (path = attack, own ground = defend), or tap card then tap hex ----
-const hit = (r, x, y) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
-function cardAt(x, y) { const L = layout(innerWidth, innerHeight); return L.cards.findIndex((r) => hit(r, x, y)); }
+// Pointer Events only (mouse + touch). One pointer at a time; touch drags aim LIFT px above the finger.
+const LIFT = 60;
+function cardAt(x, y) { // hit rect >= 44 px, plus the raised strip of a selected card
+  if (!L) return -1;
+  return L.cards.findIndex((r) => {
+    const px = Math.max(3, (44 - r.w) / 2), py = Math.max(3, (44 - r.h) / 2);
+    return x >= r.x - px && x <= r.x + r.w + px && y >= r.y - py - L.T * 0.35 && y <= r.y + r.h + py;
+  });
+}
 function play(px, py) {
-  const me = g.s.P[g.seat], ci = me.hand[ui.sel], { h, kind } = dropAt(layout(innerWidth, innerHeight), g.s, ui, px, py);
+  const me = g.s.P[g.seat], ci = me.hand[ui.sel], { h, kind } = dropAt(L, g.s, ui, px, py);
   if (!kind || me.cards[ci].cost * 60 > me.e) return false; // invalid: card stays in hand
   if (g.live) g.live.play(ci, ...h); else g.pending.push({ seat: g.seat, card: ci, x2: h[0], y: h[1] });
   ui.sel = null;
   return true;
 }
 cv.addEventListener('pointerdown', (e) => {
-  if (!g || g.ended) return;
+  e.preventDefault();
+  if (!g || g.ended || !L || ui.drag || !e.isPrimary) return; // second finger during a drag: ignored
   const i = cardAt(e.clientX, e.clientY);
-  if (i >= 0) { ui.sel = ui.sel === i ? null : i; ui.drag = ui.sel != null ? { x: e.clientX, y: e.clientY, moved: false } : null; return; }
-  if (ui.sel != null) play(e.clientX, e.clientY);
+  if (i >= 0) {
+    ui.sel = ui.sel === i ? null : i;
+    if (ui.sel != null) {
+      ui.drag = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, lift: e.pointerType === 'touch' ? LIFT : 0, moved: false };
+      cv.setPointerCapture(e.pointerId);
+    }
+    return;
+  }
+  if (ui.sel != null && g.s.P[g.seat].hand[ui.sel] != null) play(e.clientX, e.clientY); // tap card, then tap hex
 });
-cv.addEventListener('pointermove', (e) => { if (ui.drag) { ui.drag.x = e.clientX; ui.drag.y = e.clientY; ui.drag.moved = true; } });
-cv.addEventListener('pointerup', (e) => {
-  if (ui.drag?.moved && cardAt(e.clientX, e.clientY) < 0 && ui.sel != null) play(e.clientX, e.clientY);
+cv.addEventListener('pointermove', (e) => {
+  const d = ui.drag;
+  if (!d || e.pointerId !== d.id || (!d.moved && Math.hypot(e.clientX - d.x0, e.clientY - d.y0) < 8)) return; // tap jitter
+  d.moved = true; d.x = e.clientX; d.y = e.clientY - d.lift; // ghost + target hex sit above the finger
+});
+const endDrag = (e) => {
+  const d = ui.drag;
+  if (!d || e.pointerId !== d.id) return;
   ui.drag = null;
-});
+  if (e.type === 'pointerup' && d.moved && ui.sel != null && cardAt(e.clientX, e.clientY) < 0) play(d.x, d.y);
+};
+cv.addEventListener('pointerup', endDrag);
+cv.addEventListener('pointercancel', endDrag);
+cv.addEventListener('contextmenu', (e) => e.preventDefault());
 addEventListener('keydown', (e) => { if (e.key === 'r') ui.showRange = !ui.showRange; });
+
+// ---- viewport: safe-area insets (CSS env() read back via #sa), fullscreen + landscape lock ----
+const fs = $('fs');
+function insets() {
+  const c = getComputedStyle($('sa'));
+  ui.sa = { l: parseFloat(c.paddingLeft) || 0, t: parseFloat(c.paddingTop) || 0, r: parseFloat(c.paddingRight) || 0, b: parseFloat(c.paddingBottom) || 0 };
+}
+addEventListener('resize', insets);
+addEventListener('orientationchange', () => setTimeout(insets, 300)); // iOS reports new insets late
+visualViewport?.addEventListener('resize', insets);
+insets();
+async function goFull() {
+  try { await document.documentElement.requestFullscreen({ navigationUI: 'hide' }); } catch { /* iOS / iframe without allow=fullscreen */ }
+  try { await screen.orientation.lock('landscape'); } catch { /* needs fullscreen; unsupported on iOS */ }
+}
+if (!document.fullscreenEnabled) $('rot').classList.add('nofs');
+$('rot').onclick = () => document.fullscreenEnabled && goFull();
+fs.onclick = () => (document.fullscreenElement ? document.exitFullscreen().catch(() => {}) : goFull());
+$('code').addEventListener('focus', () => setTimeout(() => $('code').scrollIntoView({ block: 'center' }), 300)); // keep it above the keyboard
 
 // ---- boot ----
 document.querySelectorAll('[data-bot]').forEach((b) => (b.onclick = () => startBot(b.dataset.bot)));
