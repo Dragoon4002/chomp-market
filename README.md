@@ -1,118 +1,152 @@
 # Chomp Market
 
-Real-time 1v1 browser games (Brawler, Ribbon Rush, Keyfall, Coinflip) with a deterministic sim, rollback netcode, server referee with replayable input tapes, bots and a player market.
+Solana (devnet) game portal + marketplace. Plug-and-play games run in a sandboxed iframe, talk to the portal through a postMessage bridge, and use the user's wallet for stakes, scores and in-game programs. Market (skills, monsters, collections, launchpad, spin) runs in the same app.
 
-**Status:** being ported to **Solana + MagicBlock** (Ephemeral Rollups for match state, VRF for randomness). The previous chain contracts and wallet code were removed; the codebase is chain-agnostic. Chain calls go through one stub seam per app (marked `TODO(solana)`) that throws "coming soon", so practice, free online rooms, bots, spectating and replays work; staking, betting, tournaments, monster/skill trading show the UI but are not wired.
+All on-chain parts are **devnet only**. Market pages use mock data with `?demo` (the marketplace program is not built yet, see Limitations).
 
-Chain seams: `packages/platform/index.ts` (shared TS wallet/balance), `games/brawler/client/src/lib/chain.ts`, `games/brawler/client/src/lib/nft.ts`, `games/keyfall/client/src/lib/chain.ts`, `games/coinflip/client/src/lib/api.ts`, `games/ribbon/client/src/App.tsx`, `market/lib/assets.ts`, `crates/chain` (Rust servers). `grep -rn "TODO(solana)"` lists them all.
+## Games
 
-## Features
+| slug | type | on-chain | status |
+|---|---|---|---|
+| `brawler` | 1v1 fighter, rollback netcode, Rust referee | stake via `chomp` (open/join/settle) + score | staked e2e on devnet |
+| `keyfall` | 1v1 typing duel | stake via `chomp` | staked e2e on devnet |
+| `ribbon` | 1v1 trail racer | stake via `chomp` | staked e2e on devnet |
+| `coinflip` | commit-reveal heads/tails | stake via `chomp` | staked e2e on devnet |
+| `monster-siege` | 1v1 card/tower duel (html5) | score only (`submit_score`) | playable; referee key registered, staking not tested |
+| `tomb-delve` | card dungeon extraction (Next export) | score only | playable |
+| `2048` | puzzle (MIT upstream) | score only | playable |
+| `pet-den` | tamagotchi-style pets | own program `pet_den` (create, care, evolve, release) | playable on base layer |
+| `sealed-house` | blind-bid vault auction | own program `sealed_house` (lot, bid, settle, sell_back) + MagicBlock VRF | playable on devnet |
 
-- Practice vs bot, no wallet, keyboard / gamepad / touch.
-- Online rooms: public or private, spectators, chat, rematch.
-- Rollback netcode (P2P with relay fallback); reconnect to a fight within 30 s.
-- Provable fairness: deterministic sim (no randomness, no clock, no trig); the referee re-simulates the confirmed tape and records a SHA-256 tape hash; `/replay/<id>` re-runs it in the browser.
-- Monsters with DNA-driven stats and equippable skills (same rules in the TS sim and the Rust referee, golden-tested).
-- Bots: press "Call bot" in a free room and a bot joins (`agents/`).
+Each game lives in `games/<slug>/` with `game.json` (portal manifest) and `INTAKE.md` (design + integration notes). The portal reads every `game.json` at build time.
 
-## Repo
+## Solana + MagicBlock
 
-| Path | What |
-|---|---|
-| `games/brawler/client/` | game client (Next.js) |
-| `games/brawler/server/` | Rust WebSocket server: relay, lobby, referee, tapes, history |
-| `games/brawler/sim/` | Rust port of the sim, golden-tested against the TS sim |
-| `games/ribbon/client/` | Ribbon Rush client (Next.js) |
-| `games/ribbon/server/` | Ribbon Rush Rust WebSocket server: authoritative sim, referee, tapes |
-| `games/ribbon/sim/` | Ribbon Rush Rust sim, golden-tested against the TS twin |
-| `games/keyfall/client/` | Keyfall client (Next.js); `src/lib/game.ts` runs the rules locally for practice |
-| `games/keyfall/server/` | Keyfall Rust WebSocket server: authoritative rules, rooms, referee |
-| `games/coinflip/client/` | Coinflip client (Next.js); commit-reveal flip in `src/lib/flip.ts` |
-| `crates/chain/` | Rust chain seam for game servers (stub, `TODO(solana)`) |
-| `packages/platform/` | shared TS wallet + balance hooks (stub, `TODO(solana)`) |
-| `agents/` | bot service |
-| `market/` | skill + monster marketplace (Next.js + Tailwind, bun) |
-| `scripts/` | golden vectors |
-| `infra/` | Terraform, Ansible, Docker, Caddy |
+- **`chomp` program** (`programs/chomp/`, Anchor): match escrow (`open_match`, `join_match`, `settle`, `cancel`) with a 2.5% fee, plus per-game `submit_score` leaderboard. A per-game referee key settles matches; anyone can `cancel`/refund after 2 h. Spec: `tasks/devnet-spec.md`.
+- **`pet_den`, `sealed_house`**: standalone Anchor programs in `games/<slug>/program/`.
+- **MagicBlock VRF: used for real** in `sealed-house` (vault contents rolled by the VRF callback on devnet).
+- **MagicBlock Ephemeral Rollups: not used yet.** `pet-den` runs on the base layer. The Private ER path (delegation, gasless care, commit back on evolve) is kept in the program and `NEXT_PUBLIC_ER_RPC` is plumbed through the bridge (`er: true`), but it is not wired in the shipped flow.
+- Marketplace spin via VRF and item trading are not implemented on chain.
 
-## Run
+### Devnet programs
 
-```sh
-npm install && npm test && npm run build      # all TS workspaces
-cargo test --workspace                         # rust sim + server
-make dev                                       # backend in docker, ws :8787 (BRAWLER_PORT)
-cargo run -p brawler-server                    # same, no docker
-npm run dev -w @xyz/brawler                    # http://localhost:3000
-cd market && bun install && bun dev           # market, http://localhost:3000 (?demo for mock data)
-cargo run -p ribbon-server                     # ribbon ws :8788
-npm run dev -w @xyz/ribbon                     # http://localhost:3001 (?demo = local bot, no wallet/server)
-cargo run -p keyfall-server                    # keyfall ws :8789
-npm run dev -w @xyz/keyfall                    # http://localhost:3002 (?demo = practice vs bot, no wallet/server)
-npm run dev -w @xyz/coinflip                   # http://localhost:3003 (?demo = local, no wallet/server)
+| program | id | explorer |
+|---|---|---|
+| chomp | `4m5U9NJaLNyDzZj926jE9Y9nvKYJf82MQEcabbbGqcNf` | [view](https://explorer.solana.com/address/4m5U9NJaLNyDzZj926jE9Y9nvKYJf82MQEcabbbGqcNf?cluster=devnet) |
+| pet-den | `2shkiB14DfoCSKawmYMv3qsGTBCxuN4onKQuztYyG2ue` | [view](https://explorer.solana.com/address/2shkiB14DfoCSKawmYMv3qsGTBCxuN4onKQuztYyG2ue?cluster=devnet) |
+| sealed-house | `FGYiydgg6XWauRUq9eyMwHFuwJjG5TM2ndLNQVEJjfR4` | [view](https://explorer.solana.com/address/FGYiydgg6XWauRUq9eyMwHFuwJjG5TM2ndLNQVEJjfR4?cluster=devnet) |
+
+## Wallet
+
+- **Burner**: keypair in localStorage (`chomp:burner`), created on first connect. Fund it with the in-app faucet (`/api/faucet`, 0.2 SOL, rate limited).
+- Inside a game iframe the wallet is a **bridge** to the portal's wallet (games never hold keys).
+- **Privy** (embedded/external wallets) is implemented but hidden for now and untested; it needs `NEXT_PUBLIC_PRIVY_APP_ID`.
+
+## Architecture
+
+```
+market (Next.js)  /play/<slug>  --sandboxed iframe-->  /g/<slug>/  (static game build)
+        ^                                               |  window.Chomp (public/chomp-sdk.js)
+        '------------- postMessage bridge ---------------'  connect | tx | rpc | pda | sign
+market  /g/<slug>-ws/*  --rewrite-->  game server (Rust, referee)  --settle-->  chomp program
 ```
 
-- Server env: `PORT`, `HISTORY_FILE`. Free rooms only until the Solana port.
-- Client env (build-time): `NEXT_PUBLIC_SERVER_URL` (default: same origin), `NEXT_PUBLIC_PLATFORM_ID`, `NEXT_PUBLIC_MARKET_URL`, `NEXT_PUBLIC_MONSTERS_ID`, `NEXT_PUBLIC_ASSET_URL`. Market: `NEXT_PUBLIC_ASSETS_ID`, `NEXT_PUBLIC_PLATFORM_ID`, `NEXT_PUBLIC_BRAWLER_URL`, `NEXT_PUBLIC_DEMO=1`.
-- Golden vectors: `node --experimental-strip-types scripts/golden.ts` after any TS sim change, then `cargo test`.
-- New game: `games/<id>/{client,server}`.
+- **Sandbox**: iframe has an opaque origin (no cookies/localStorage, no access to the burner) and `/g` serves a CSP.
+- **Bridge allowlist**: `tx` is rejected unless every instruction targets chomp / pet-den / sealed-house / MagicBlock programs / ComputeBudget. No raw SystemProgram transfers. Chomp instructions are bound to the game's slug. `rpc` is read-only methods only.
+- **Referee servers** (brawler, keyfall, ribbon, coinflip): authenticate seats by an ed25519 signature from the wallet (`wallet.signBytes`), re-simulate / compute the result, and call `settle` with their own referee key. Finished match ids are tracked in memory.
+- On a numeric `score` result the portal itself sends `submit_score` when signed in.
+- Brawler/ribbon keep a deterministic Rust sim (golden-tested against the TS twin); the referee records a SHA-256 tape hash; `/replay/<id>` re-runs it.
 
-## Ribbon Rush
+| path | what |
+|---|---|
+| `market/` | portal + marketplace (Next.js, Tailwind, bun) |
+| `programs/chomp/` | chomp Anchor program |
+| `games/<slug>/` | game: `client/` or `build/` (served), `server/` (Rust), `program/`, `game.json`, `INTAKE.md` |
+| `crates/chain/` | Rust RPC read, referee settle, ed25519 verify |
+| `packages/platform/` | shared TS wallet (burner/Privy/bridge) + chomp helpers |
+| `scripts/` | `devnet-setup.sh`, `devnet-init.ts`, `serve-games.ts`, golden vectors |
+| `agents/` | bot service |
+| `infra/` | Terraform, Ansible, Docker, Caddy (legacy EC2 deploy) |
 
-Second game (id `ribbon`). Two riders on a grid leave trails; trails fade, the ring closes in, each rider gets one boost per round, best of 3. The server runs the sim authoritatively; its referee computes the winner and tape hash.
+## Run locally
 
-- Server env: `PORT` (8788) `TAPE_DIR`. Prod: `wss://ribbon.<domain>`.
-- Client env: `NEXT_PUBLIC_SERVER_URL`, `NEXT_PUBLIC_MARKET_URL`. Demo: http://localhost:3001/?demo
+Needs node, bun, Rust, Solana CLI + Anchor (to deploy programs).
 
-## Keyfall
+**1. Devnet setup** (only to deploy your own programs; the ids above are already live). Needs a funded deployer at `~/.config/solana/id.json` and keypairs in `.keys/` (gitignored, never commit):
 
-Third game (id `keyfall`): a 1v1 typing duel. Both players get the same seeded stream of words falling down their own lane. Type a word and press Space or Enter to destroy it, and your opponent loses health equal to its length. A word that reaches your base costs you its length. Three wrong submissions in a row stun you for 2 s. Each player starts with 600 HP and the match lasts 5:00. At 0 HP you lose; when time runs out, higher HP wins, then higher WPM, otherwise it's a draw.
+```sh
+scripts/devnet-setup.sh            # fund faucet+referees, deploy 3 programs, init(250 bps), register all 9 games; prints env
+scripts/devnet-setup.sh --only chomp
+```
 
-- The server owns the clock, the word stream, health and WPM. Clients only send the words they type (at most 20 per second), so a client can't fake hits or damage.
-- A disconnected player has 15 s to rejoin (the words keep falling); after that the opponent wins by forfeit.
-- Practice vs bot (easy/medium/hard) and `?demo` run the rules in the browser with no wallet or server.
-- Server env: `PORT` (8789). Prod: `wss://keyfall.<domain>`. Client env: `NEXT_PUBLIC_SERVER_URL`, `NEXT_PUBLIC_MARKET_URL`.
-- Rules and protocol: `tasks/keyfall-spec.md`.
+**2. Market**
 
-## Coinflip
+```sh
+cd market && bun install && bun dev          # http://localhost:3100  (?demo = mock market data)
+```
 
-Fourth game (id `coinflip`): heads-or-tails rooms. Commit-reveal: the server commits `sha256(seed)` before the flip, the result is `sha256(seed ‖ clientSeed)[0] & 1`, so either player can check it. Server in `games/coinflip/server` (client expects it at `?server=`, default `http://localhost:8790`); `?demo` runs everything in the browser.
+**3. Games** (static builds served detached, so they survive market reloads)
+
+```sh
+npm install
+npm run games                                # http://localhost:3200/g/<slug>/ ; proxies /g/<slug>-ws to servers
+# market/.env.local: NEXT_PUBLIC_GAMES_ORIGIN=http://localhost:3200
+```
+
+**4. Game servers** (only needed for staked/online games; no `REFEREE_KEYPAIR` = free rooms only)
+
+```sh
+REFEREE_KEYPAIR=.keys/referee-brawler.json cargo run -p brawler-server --release   # :8787
+REFEREE_KEYPAIR=.keys/referee-ribbon.json  cargo run -p ribbon-server              # :8788
+REFEREE_KEYPAIR=.keys/referee-keyfall.json cargo run -p keyfall-server             # :8789
+REFEREE_KEYPAIR=.keys/referee-coinflip.json cargo run -p coinflip-server           # :8791
+cargo run -p monster-siege-server                                                  # :8790 lockstep relay for live 1v1 (free, no stakes)
+```
+
+Static client builds (`games/<slug>/build/`) come from each client's Next export (`npm run build -w <ws>`).
+
+### Env vars
+
+| var | where | what |
+|---|---|---|
+| `NEXT_PUBLIC_CHOMP_ID` | market | chomp program id |
+| `NEXT_PUBLIC_PET_DEN_ID` | market | pet-den program id |
+| `NEXT_PUBLIC_SEALED_HOUSE_ID` | market | sealed-house program id |
+| `NEXT_PUBLIC_SOLANA_RPC` | market | RPC (default public devnet; it 429s, use a dedicated one) |
+| `NEXT_PUBLIC_ER_RPC` | market | MagicBlock ER RPC (`https://devnet.magicblock.app`) |
+| `NEXT_PUBLIC_GAMES_ORIGIN` | market | where game builds are served (empty = same origin) |
+| `NEXT_PUBLIC_PRIVY_APP_ID` | market | enables Privy (hidden for now) |
+| `FAUCET_KEYPAIR` / `FAUCET_SECRET` | market (server) | faucet key: file path (local) / keypair JSON (hosted) |
+| `SOLANA_RPC` | market + servers | server-side RPC |
+| `CHOMP_PROGRAM_ID` | servers | chomp program id |
+| `REFEREE_KEYPAIR` | servers | path to `.keys/referee-<slug>.json` |
+| `<SLUG>_SERVER` | market, serve-games | upstream for `/g/<slug>-ws` (e.g. `BRAWLER_SERVER`, `MONSTER_SIEGE_SERVER`), default `http://127.0.0.1:<port>` |
+
+`.keys/` holds program, faucet and referee keypairs and is gitignored. Never commit it or print its contents.
+
+### Tests
+
+```sh
+npm test && cargo test --workspace
+node --experimental-strip-types scripts/golden.ts   # after any TS sim change, then cargo test
+cd market && bunx tsc --noEmit -p . && bun run build
+```
 
 ## Deploy
 
-Two EC2 boxes behind Caddy TLS: **server** runs the game server and bots (rooms are in-memory, so exactly one instance); **clients** runs the game client and market (Next standalone). Domains are `<eip>.sslip.io`, no DNS setup. Needs `terraform`, `ansible`, `jq`, docker buildx, AWS creds. Details in `infra/README.md`.
+- **Market**: Vercel (Next, `output: standalone`). Set the env vars above and `FAUCET_SECRET`.
+- **Game servers are not served by Vercel.** Host the Rust servers separately (one instance each, rooms are in-memory) and point the market at them with `<SLUG>_SERVER`, e.g. `BRAWLER_SERVER=https://brawler.example.com`. Game static builds must ship with the market (`games/*/build`) or from `NEXT_PUBLIC_GAMES_ORIGIN`.
+- Legacy EC2/Caddy flow: `infra/README.md`.
 
-```sh
-cp infra/terraform/terraform.tfvars.example infra/terraform/terraform.tfvars   # set ssh_cidr
-make deploy-infra                     # 2x EC2 + EIP + SG
-make deploy                           # docker + repo (main) on both, build+ship 4 images, compose up
-```
+## Known limitations
 
-- `?server=wss://<domain>` on the game URL overrides the server for a quick test.
-- Redeploy: `make deploy ANSIBLE_ARGS="-e repo_version=<sha>"`.
-
-## Controls
-
-Practice vs bot from the title screen, or play online: host a room, join by code, or watch from the lobby. Phones get an on-screen stick and buttons.
-
-| | Move / aim | Jump | Light | Heavy | Block | Dodge |
-|---|---|---|---|---|---|---|
-| Keyboard | WASD (or arrows) | Space or W | J | K | L (hold) | C |
-| Mouse / alternates | | | Right click / Z | Left click / X | Q (hold) | |
-| Gamepad | Stick / D-pad | A | X | B / Y | | Bumpers / triggers |
-
-Block (grounded, hold L or Q): hits from the front deal 1/5 damage and a small push instead of launching you; hits from behind land in full. You can't move or attack while blocking.
-
-Hold a direction with an attack to pick the move (neutral, side or down; ground or air). Air neutral heavy is the recovery move; air down heavy is the ground pound. Hold down on a thin platform to drop through it. Press ` to show hitboxes and Esc to return to the menu.
-
-## How it works
-
-- **`src/lib/sim/`**: deterministic simulation at a fixed 60 Hz. No DOM, no randomness, no trig, no clock: the same inputs always produce the same state, in TS and in the Rust port.
-  - Fighter states: idle, run, jumpsquat, air, land, dodge, attack, hitstun, block, dead.
-  - Each stock has 200 HP; damage raises knockback: (base + damage% × growth) × defence modifier.
-  - Hitlag on impact, hitstun scaled by knockback, 6-frame input buffer, frame data in `moves.ts`.
-- **`src/lib/render/`**: procedural bone rig with keyframed poses, a fit-both camera, hit sparks, screen shake and KO beams. Reads sim state only.
-- **`src/lib/net.ts`**: rollback netplay. The local sim predicts the opponent's input up to 10 frames ahead and re-simulates when real input arrives; clients compare state hashes every second.
-- **Server**: relays inputs, records the confirmed tape, re-simulates it as referee, computes the result + tape hash (on-chain posting: `TODO(solana)`), and serves history and tapes.
+- Devnet only. Public devnet RPC rate-limits (429); use a dedicated RPC.
+- Marketplace (listings, sales, offers, cart tx, spin) is mock data / stubs: no marketplace program or indexer yet. Buyer/seller, per-item sale history and tx links are missing.
+- No ER usage; pet-den and sealed-house run on base layer.
+- `sealed-house`: lot contents are readable on chain, so `sell_back` can be drained (decision pending). Bids use commit-reveal, not PER.
+- `submit_score` is not verified on chain (client-reported); no fee withdraw instruction; deployer can swap a game's referee; finished match ids are in-memory only.
+- Privy hidden (untested). Coinflip art still shows old NEAR glyphs. Portal doesn't forward `?room=` to the iframe; 390px iframe is small.
+- Free play only for monster-siege, tomb-delve, 2048; no staking path.
 
 ## License
 

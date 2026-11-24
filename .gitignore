@@ -28,3 +28,10 @@ out/
 
 # local-only planning docs
 /docs/
+/.keys/
+
+# game server runtime output (brawler history, ribbon tapes)
+/history.jsonl
+/tapes/
+/market/public/g/
+*.tsbuildinfo

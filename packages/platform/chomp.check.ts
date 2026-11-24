@@ -1,0 +1,20 @@
+// node --experimental-strip-types packages/platform/chomp.check.ts  (hits devnet read-only)
+import assert from 'node:assert';
+import { Keypair } from '@solana/web3.js';
+import { pda, ix, readScore, readMatch, randomMatchId, fromB64, toB64, connectBurner, getWallet, bs58 } from './chomp.ts';
+const mem = new Map<string, string>();
+Object.assign(globalThis, { localStorage: { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => mem.set(k, v), removeItem: (k: string) => mem.delete(k) } });
+assert.equal(pda.config(), 'MtaUB6EcA2K7exQKtk6k2uoChDmsQL1i935JVx11BNn');
+const p = Keypair.generate().publicKey.toBase58();
+const s = ix.submitScore(p, '2048', 1234n);
+assert.deepEqual(Array.from(fromB64(s.data).subarray(8, 16)), [210, 4, 0, 0, 0, 0, 0, 0]);
+assert.equal(fromB64(toB64(Uint8Array.of(1, 2, 255))).join(), '1,2,255');
+for (let i = 0; i < 100; i++) assert(randomMatchId() < 2n ** 53n);
+assert.equal(await readMatch('2048', 1n), null);
+assert.equal(await readScore('2048', p), null);
+await connectBurner();
+const w = getWallet(), msg = new TextEncoder().encode('seat:1');
+const sig = await w.signBytes(msg);
+const key = await crypto.subtle.importKey('raw', bs58.decode(w.signedAccountId), { name: 'Ed25519' }, false, ['verify']);
+assert(sig.length === 64 && await crypto.subtle.verify('Ed25519', key, sig, msg));
+console.log('ok', pda.game('2048'));

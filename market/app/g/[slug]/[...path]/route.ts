@@ -25,6 +25,8 @@ export async function GET(_: Request, { params }: { params: Promise<{ slug: stri
     "Content-Type": MIME[path.extname(name).toLowerCase()] ?? "application/octet-stream", // .pck/.data/.unityweb
     "Access-Control-Allow-Origin": "*", // sandboxed iframe has origin "null"; fetch()/module scripts need CORS
     "Cache-Control": "public, max-age=300",
+    // opaque origin even when opened top-level (or framed without our sandbox attr): game code can't read portal storage (chomp:burner)
+    "Content-Security-Policy": "sandbox allow-scripts allow-forms allow-pointer-lock allow-downloads",
   });
   if (enc) h.set("Content-Encoding", enc);
   // ponytail: no COOP/COEP, so Godot builds must export with Thread Support off. Add headers + isolate portal if a threaded build is needed.

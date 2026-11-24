@@ -2,9 +2,10 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { amount, change24, fmt, KIND_LABEL, short, useAssets, type Dna, type Kind, type Monster, type Point, type Rarity, type Skill } from "@/lib/assets";
+import { amount, change24, explorer, fmt, KIND_LABEL, short, useAssets, type Dna, type Kind, type Monster, type Point, type Rarity, type Skill } from "@/lib/assets";
 import { cart, cartKey, cartOpen, removeFromCart, toggleWatch, watch } from "@/lib/local";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/shadcn/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/shadcn/dropdown-menu";
+import { BASE, bs58, burnerKey, connectBurner, getWallet, loginPrivy, PRIVY_APP_ID, requestFaucet, useSol } from "@/lib/wallet";
 import { ChevronDown, ChevronLeft, ChevronRight, Search, ShoppingCart, Star as StarIcon, X } from "lucide-react";
 
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
@@ -88,14 +89,15 @@ export function Shell({ children }: { children: ReactNode }) {
                     <ChevronDown className="size-4 text-muted" />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-52 rounded-2xl border-3 border-ink bg-panel-2 p-1.5 shadow-drop">
+                <DropdownMenuContent align="end" className="w-60 rounded-2xl border-3 border-ink bg-panel-2 p-1.5 shadow-drop">
+                  {!a.demo && <WalletItems account={a.account} />}
                   {[["/me", "My stuff"], ["/me?tab=watchlist", "Watchlist"], ["/me?tab=proceeds", "Proceeds"], ["/economy", "Economy sim"]].map(([h, l]) => (
                     <DropdownMenuItem key={h} asChild><Link href={h} className="rounded-xl font-bold">{l}</Link></DropdownMenuItem>
                   ))}
                   <DropdownMenuItem variant="destructive" className="rounded-xl font-bold" onClick={a.signOut}>Log out</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            ) : <Btn onClick={a.signIn} small>Connect</Btn>}
+            ) : <ConnectMenu />}
           </div>
         </div>
       </header>
@@ -109,6 +111,55 @@ export function Shell({ children }: { children: ReactNode }) {
       </footer>
       <CartDrawer />
       <Toaster />
+    </>
+  );
+}
+
+const itemCls = "rounded-xl font-bold";
+// signed out: pick a wallet. Opened by any useAssets().signIn() (event from lib/wallet openConnect).
+function ConnectMenu() {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const on = () => setOpen(true);
+    addEventListener("chomp:connect", on);
+    return () => removeEventListener("chomp:connect", on);
+  }, []);
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild><Btn small>Connect</Btn></DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-60 rounded-2xl border-3 border-ink bg-panel-2 p-1.5 shadow-drop">
+        <DropdownMenuItem className={cx(itemCls, "flex-col items-start gap-0")} onClick={() => void connectBurner()}>
+          Burner wallet<span className="text-xs font-semibold text-muted">Devnet key kept in this browser</span>
+        </DropdownMenuItem>
+        {PRIVY_APP_ID && (
+          <DropdownMenuItem className={cx(itemCls, "flex-col items-start gap-0")} onClick={loginPrivy}>
+            Privy<span className="text-xs font-semibold text-muted">Email / social, or Phantom etc.</span>
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function WalletItems({ account }: { account: string }) {
+  const sol = useSol(account);
+  const burner = getWallet().kind === "burner";
+  const copy = (v: string, done: string) => navigator.clipboard.writeText(v).then(() => toast(done), () => toast("Couldn't copy"));
+  return (
+    <>
+      <DropdownMenuLabel className="flex items-center gap-2 px-2 font-bold">
+        <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted" title={account}>{short(account)}</span>
+        <Pill tone="gold">{sol == null ? "…" : fmt(sol)} SOL</Pill>
+      </DropdownMenuLabel>
+      <DropdownMenuItem className={itemCls} onClick={() => act(() => requestFaucet(account, BASE), "Devnet SOL on its way")}>Get devnet SOL</DropdownMenuItem>
+      <DropdownMenuItem className={itemCls} onClick={() => copy(account, "Address copied")}>Copy address</DropdownMenuItem>
+      <DropdownMenuItem asChild><a href={explorer("address", account)} target="_blank" rel="noreferrer" className={itemCls}>View on explorer ↗</a></DropdownMenuItem>
+      {burner && (
+        <DropdownMenuItem className={itemCls} onClick={() => { const kp = burnerKey(); if (kp && confirm("Copy the burner's secret key? Anyone with it controls this wallet.")) copy(bs58.encode(kp.secretKey), "Secret key copied"); }}>
+          Export burner key
+        </DropdownMenuItem>
+      )}
+      <DropdownMenuSeparator className="bg-ink" />
     </>
   );
 }

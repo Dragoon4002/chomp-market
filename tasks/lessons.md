@@ -21,3 +21,9 @@
 
 ## 2026-11-24 — wrong repo
 - User referenced `market/inspirations/...` that only existed in a sibling repo (solana/chomp-market); session cwd was near/brawler_arena. Rule: when the user names a path missing from cwd, `find` it across ~/programming and confirm the target repo before planning/building.
+
+## 2026-11-24 — live server + parallel test agents
+- When a user-facing server is live, tell test agents the exact log path to AVOID and give them their own (port + log file). An agent's test relay tee'd into the live relay log and truncated it.
+
+## 2026-11-25 — pkill -f killed my own shell
+- `pkill -f "<pattern>"` matched the bash command line that contained the pattern → exit 144, rest of command skipped. Kill servers by pid from `ss -ltnp | grep :PORT` instead.
