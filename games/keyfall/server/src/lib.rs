@@ -2,6 +2,9 @@
 //! Protocol + rules: tasks/keyfall-spec.md.
 //! Chat per room: {t:'chat', text} from seats (<=200 chars, 1 per 500 ms) -> {t:'chat', from, seat, text, ts};
 //! last 50 kept, sent as {t:'chatlog', lines} after host/join/rejoin.
+//! Staked rooms: host/join carry {matchId, account, sig}; sig = base58 ed25519 over utf8
+//! `chomp:keyfall:<matchId>:<hello.nonce>`. host account = Match.a, join account = Match.b (joined on-chain).
+//! On end the referee posts `settle(matchId, winner ?? 2)`.
 pub mod game;
 
 use axum::extract::State;
@@ -12,7 +15,7 @@ use futures_util::{SinkExt, StreamExt};
 use game::{COUNTDOWN_MS, DT_MS, DURATION_MS, GRACE_MS, Sim, rank, verdict};
 use chain::Chain;
 use serde_json::{Value, json};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
@@ -37,6 +40,8 @@ fn err(tx: &Tx, msg: &str) {
 
 struct Room {
     match_id: Option<u64>,
+    /// On-chain [a, b] as seated; settle pays only these.
+    pair: [String; 2],
     stake: String,
     names: [String; 2],
     tokens: [String; 2],
@@ -127,6 +132,9 @@ impl Room {
 
 pub struct App {
     rooms: Mutex<HashMap<String, Room>>,
+    /// Match ids already played: never re-hosted, so a dropped settle can't be replayed.
+    // ponytail: in memory, lost on restart; a settled match's closed account still rejects it
+    finished: Mutex<HashSet<u64>>,
     chain: Arc<Chain>,
 }
 
@@ -134,12 +142,13 @@ impl App {
     pub fn new(chain: Arc<Chain>) -> Arc<Self> {
         Arc::new(App {
             rooms: Mutex::default(),
+            finished: Mutex::default(),
             chain,
         })
     }
 
     fn on_chain(&self) -> bool {
-        !self.chain.contract.is_empty()
+        self.chain.enabled()
     }
 
     fn tick(&self) {
@@ -153,7 +162,19 @@ impl App {
                     "hp": [r.sims[0].hp, r.sims[1].hp], "wpm": [r.sims[0].wpm(), r.sims[1].wpm()],
                 });
                 r.send_views("over", Some(("result", res)));
-                // TODO(solana): post {match_id, winner} on-chain for chain matches (was report_result).
+                if let Some(id) = r.match_id {
+                    self.finished.lock().unwrap().insert(id);
+                }
+                if let Some(id) = r.match_id.filter(|_| self.on_chain()) {
+                    let (chain, w, pair) = (self.chain.clone(), winner.unwrap_or(2), r.pair.clone());
+                    tokio::spawn(async move {
+                        // confirm + rebroadcast inside; still unsettled → `cancel` refunds both after 2 h
+                        match chain.settle(id, w, &pair).await {
+                            Ok(sig) => eprintln!("settle {id} winner {w}: {sig}"),
+                            Err(e) => eprintln!("settle {id} winner {w} failed: {e}"),
+                        }
+                    });
+                }
                 ended.push(code.clone());
             } else if r.phase != "wait" || std::mem::take(&mut r.dirty) {
                 r.send_views("state", None);
@@ -168,18 +189,13 @@ impl App {
         }
     }
 
-    async fn get_match(&self, id: u64) -> Option<Value> {
-        let m: Value = self
-            .chain
-            .view(&self.chain.contract, "get_match", json!({ "match_id": id }))
-            .await?;
-        (m["game"] == GAME).then_some(m)
+    async fn get_match(&self, id: u64) -> Option<chain::MatchInfo> {
+        self.chain.match_info(id).await
     }
 
-    async fn authed(&self, m: &Value, account: &str, id: u64, nonce: [u8; 32]) -> bool {
-        self.chain
-            .verify_auth(&m["auth"], account, &format!("keyfall:{id}"), nonce)
-            .await
+    fn authed(&self, m: &Value, account: &str, id: u64, nonce: &str) -> bool {
+        let msg = format!("chomp:{GAME}:{id}:{nonce}");
+        chain::verify_sig(account, msg.as_bytes(), m["sig"].as_str().unwrap_or(""))
     }
 }
 
@@ -214,7 +230,8 @@ struct Session {
     app: Arc<App>,
     id: u64,
     tx: Tx,
-    nonce: [u8; 32],
+    /// Sent in `hello` (base64); seat sig covers it.
+    nonce: String,
     at: Option<(String, usize)>,
     last_chat: Option<Instant>,
 }
@@ -230,8 +247,8 @@ async fn run(app: Arc<App>, sock: WebSocket) {
             }
         }
     });
-    let nonce: [u8; 32] = rand::random();
-    send(&tx, &json!({ "t": "hello", "nonce": B64.encode(nonce) }));
+    let nonce = B64.encode(rand::random::<[u8; 32]>());
+    send(&tx, &json!({ "t": "hello", "nonce": nonce }));
     let mut s = Session {
         app,
         id: rand::random(),
@@ -307,27 +324,26 @@ impl Session {
     async fn host(&mut self, m: &Value) -> Result<(), &'static str> {
         let match_id = match_id_of(&m["matchId"]);
         let mut stake = "0".to_string();
+        let account = str_of(&m["account"], 64);
         if let Some(id) = match_id {
             if !self.app.on_chain() {
                 return Err("This server has no contract configured; create a free room");
             }
-            let account = str_of(&m["account"], 64);
-            let mv = self
-                .app
-                .get_match(id)
-                .await
-                .filter(|v| v["status"] == "open" && v["host"] == account.as_str());
+            let mv = self.app.get_match(id).await.filter(|v| v.a == account);
             let Some(mv) = mv else {
                 return Err("Not the host of this on-chain keyfall match");
             };
-            if !self.app.authed(m, &account, id, self.nonce).await {
+            if !self.app.authed(m, &account, id, &self.nonce) {
                 return Err("Wallet signature check failed");
             }
-            stake = mv["stake"].as_str().unwrap_or("0").into();
+            stake = mv.stake.to_string();
         }
         let mut rooms = self.app.rooms.lock().unwrap();
         if match_id.is_some() && rooms.values().any(|r| r.match_id == match_id) {
             return Err("Room for this match already exists");
+        }
+        if match_id.is_some_and(|id| self.app.finished.lock().unwrap().contains(&id)) {
+            return Err("Match already played");
         }
         let code = new_code(&rooms);
         let name = Some(str_of(&m["name"], 24))
@@ -335,6 +351,7 @@ impl Session {
             .unwrap_or("Host".into());
         let room = Room {
             match_id,
+            pair: [account, String::new()],
             stake,
             names: [name, String::new()],
             tokens: [token(), token()],
@@ -358,6 +375,7 @@ impl Session {
 
     async fn join(&mut self, m: &Value) -> Result<(), &'static str> {
         let code = str_of(&m["code"], 8).to_uppercase();
+        let account = str_of(&m["account"], 64);
         let match_id = {
             let rooms = self.app.rooms.lock().unwrap();
             let r = rooms
@@ -367,16 +385,15 @@ impl Session {
             r.match_id
         };
         if let Some(id) = match_id {
-            let account = str_of(&m["account"], 64);
             let ok = self
                 .app
                 .get_match(id)
                 .await
-                .is_some_and(|v| v["status"] == "live" && v["guest"] == account.as_str());
+                .is_some_and(|v| v.b.as_deref() == Some(account.as_str()));
             if !ok {
                 return Err("Not the guest of this on-chain match");
             }
-            if !self.app.authed(m, &account, id, self.nonce).await {
+            if !self.app.authed(m, &account, id, &self.nonce) {
                 return Err("Wallet signature check failed");
             }
         }
@@ -389,6 +406,7 @@ impl Session {
             .filter(|n| !n.is_empty())
             .unwrap_or("Guest".into());
         r.conns[1] = Some((self.id, self.tx.clone()));
+        r.pair[1] = account;
         r.phase = "count";
         r.seated(&self.tx, &code, 1);
         self.at = Some((code, 1));

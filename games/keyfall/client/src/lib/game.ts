@@ -1,5 +1,6 @@
 // Keyfall solo sim: TS port of Typewriter Command (tasks/keyfall-spec.md v2, tasks/keyfall-reference.md).
 // Same rules as games/keyfall/server/src/game.rs. World units, y up: view x ∈ [-VIEW_W, VIEW_W], y ∈ [-VIEW_H, VIEW_H].
+export const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? ''; // '/g/keyfall' (next.config basePath); public/ assets live under it
 export const DURATION_MS = 120_000;
 // No typeable enemy on screen -> the spawn schedule runs this much faster (same enemies/words/order, just sooner).
 export const EMPTY_BOOST = 1.2;
@@ -317,6 +318,6 @@ export class Sim {
 }
 
 let cache: Promise<string[]> | null = null;
-export const loadWords = () => (cache ??= fetch('/words.txt').then((r) => r.text())
+export const loadWords = () => (cache ??= fetch(`${BASE}/words.txt`).then((r) => r.text())
   .then((t) => t.split(/[\s,]+/).map((w) => w.trim().toLowerCase()).filter((w) => /^[a-z]+$/.test(w)))
   .catch((e) => { cache = null; throw e; }));

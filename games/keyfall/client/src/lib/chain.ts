@@ -1,31 +1,41 @@
-import { PLATFORM_ID, useBalance, usePlatform } from '@xyz/platform';
-// TODO(solana): chain seam for keyfall; calls go through @xyz/platform stubs (throw "coming soon").
+import { bs58, ix, myMatches, randomMatchId, readMatch, requestFaucet, useBalance, useWallet } from '@xyz/platform';
+import { type Reclaim, reclaims, remember } from './stakes.ts';
+// Keyfall's chain seam: chomp program escrows the stake, keyfall server referee settles.
 
 export const DEMO = typeof location !== 'undefined' && new URLSearchParams(location.search).has('demo');
 const GAME = 'keyfall';
-const ONE_YOCTO = '1'; // spend calls need full-access key -> wallet confirm
-
-export type MatchAuth = { publicKey: string; signature: string };
 
 export function useKeyfall() {
-  const p = usePlatform();
+  const w = useWallet();
   const { balance } = useBalance();
   if (DEMO) return {
-    account: 'demo-player.testnet' as string | null, signIn: async () => {}, balance: (25n * 10n ** 24n).toString() as string | null,
-    createMatch: async (_stakeYocto: string) => 1, joinMatch: async (_id: number): Promise<unknown> => null,
-    sign: async (_matchId: number, _nonce: string): Promise<MatchAuth> => ({ publicKey: '', signature: '' }),
+    account: 'demo-player' as string | null, kind: '' as string, signIn: async () => {}, faucet: async () => {}, balance: (25n * 10n ** 9n).toString() as string | null,
+    createMatch: async (_stakeLamports: string) => 1, joinMatch: async (_id: number): Promise<unknown> => null, cancel: async (_id: number): Promise<unknown> => null,
+    reclaims: async (): Promise<Reclaim[]> => [], reclaim: async (_r: Reclaim): Promise<unknown> => null,
+    sign: async (_matchId: number, _nonce: string) => '',
   };
+  const me = w.signedAccountId;
   return {
-    account: (p.w.signedAccountId || null) as string | null,
-    signIn: async () => { await p.w.signIn(); },
+    account: (me || null) as string | null,
+    kind: w.kind as string,
+    signIn: async () => { await w.signIn(); },
+    faucet: async () => { await requestFaucet(me); },
     balance,
-    createMatch: async (stakeYocto: string) =>
-      Number(await p.call('create_match', { game: GAME, stake: stakeYocto, bettable: false, monster_id: null }, ONE_YOCTO)),
-    joinMatch: (id: number): Promise<unknown> => p.call('join_match', { match_id: id, monster_id: null }, ONE_YOCTO),
-    // seat proof (TODO(solana): wallet signMessage); nonce = server hello nonce (base64)
-    sign: async (matchId: number, nonce: string): Promise<MatchAuth> => {
-      const s = await p.w.signMessage({ message: `${GAME}:${matchId}`, recipient: PLATFORM_ID, nonce: Uint8Array.from(atob(nonce), (c) => c.charCodeAt(0)) });
-      return { publicKey: String(s.publicKey), signature: String(s.signature) };
+    createMatch: async (stakeLamports: string) => {
+      const id = randomMatchId();
+      remember(GAME, Number(id)); // before send: a tab closed mid-confirm still finds the stake (Reclaim list)
+      await w.sendIxs([ix.openMatch(me, GAME, id, stakeLamports)]);
+      return Number(id);
     },
+    joinMatch: (id: number): Promise<unknown> => { remember(GAME, id); return w.sendIxs([ix.joinMatch(me, GAME, id)]); },
+    cancel: (id: number): Promise<unknown> => w.sendIxs([ix.cancel(me, GAME, id, me, null)]), // host, seat still open
+    reclaims: async () => {
+      for (const id of await myMatches(GAME, me).catch(() => [])) remember(GAME, id); // sandbox has no localStorage
+      return reclaims(GAME, me, (id) => readMatch(GAME, id));
+    },
+    reclaim: (r: Reclaim): Promise<unknown> => w.sendIxs([ix.cancel(me, GAME, r.id, r.m.a, r.m.b)]),
+    // seat proof; nonce = server hello nonce (base64 string as sent)
+    sign: async (matchId: number, nonce: string) =>
+      bs58.encode(await w.signBytes(new TextEncoder().encode(`chomp:${GAME}:${matchId}:${nonce}`))),
   };
 }

@@ -1,6 +1,6 @@
 // In-match presentation: Canvas2D port of GameScene (reference §1, §3, §4, §6) + original HUD, driven by View snapshots.
 import { useEffect, useRef, useState } from 'react';
-import { GUN, HP, type Ent, type Fx, type View } from '@/lib/game.ts';
+import { BASE, GUN, HP, type Ent, type Fx, type View } from '@/lib/game.ts';
 import type { Match } from '@/lib/match.ts';
 import { W, H, PX, World, fit, lit, loadArt, mul, spr, sx, sy, type Art, type RGB } from '@/components/scene.tsx';
 import { isMuted, play, setMuted, unlock } from '@/components/sfx.ts';
@@ -235,15 +235,15 @@ export function MatchView({ m, onMenu }: { m: Match; onMenu: () => void }) {
       <div className="stage">
         <canvas ref={ref} className="world" aria-label="Battlefield" />
         <div className="hud">
-          <p className="hud-t timer"><img src="/svg/timer.svg" alt="" />{clock(v.left_ms)}</p>
+          <p className="hud-t timer"><img src={`${BASE}/svg/timer.svg`} alt="" />{clock(v.left_ms)}</p>
           <div className="hud-tr">
             <MuteButton />
             <button className="icon-btn" aria-label="Leave match" onClick={onMenu}>
               <svg viewBox="0 0 12 12" width="22" height="22" shapeRendering="crispEdges" aria-hidden><path fill="currentColor" d="M2 2h2v1h1v1h2V3h1V2h2v2H9v1H8v2h1v1h1v2H8V9H7V8H5v1H4v1H2V8h1V7h1V5H3V4H2z" /></svg>
             </button>
           </div>
-          <p key={hits} className={`hud-t health ${hits ? 'hit' : ''}`}><img src="/svg/hp.svg" alt="" />Health: {Math.max(0, v.hp)}</p>
-          <p className="hud-t wpm"><img src="/svg/wpm.svg" alt="" />WPM: {v.wpm}</p>
+          <p key={hits} className={`hud-t health ${hits ? 'hit' : ''}`}><img src={`${BASE}/svg/hp.svg`} alt="" />Health: {Math.max(0, v.hp)}</p>
+          <p className="hud-t wpm"><img src={`${BASE}/svg/wpm.svg`} alt="" />WPM: {v.wpm}</p>
           <label className={`inbox ${stunned ? 'stun' : ''}`}>
             <span key={flash.n} className={`intext ${flash.n ? flash.c : ''}`}>
               {shown ? shown.toUpperCase() : <span className="ph">Type word...</span>}

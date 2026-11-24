@@ -1,6 +1,7 @@
 // Canvas2D port of the original scene art (tasks/keyfall-reference.md §1, §6, §8).
 // Logical canvas 1920x1080, camera ortho 5 => 108 px per world unit, y up.
 import { useEffect, useRef } from 'react';
+import { BASE } from '@/lib/game.ts';
 
 export const W = 1920, H = 1080, PX = 108;
 export const sx = (x: number) => W / 2 + x * PX;
@@ -18,7 +19,7 @@ export const loadArt = () => (artP ??= Promise.all(NAMES.map((n) => new Promise<
   const i = new Image();
   i.onload = () => ok([n, i]);
   i.onerror = no;
-  i.src = `/art/${n}.png?v=${ART_V}`;
+  i.src = `${BASE}/art/${n}.png?v=${ART_V}`;
 }))).then((a) => Object.fromEntries(a) as Art));
 
 export type RGB = [number, number, number];
