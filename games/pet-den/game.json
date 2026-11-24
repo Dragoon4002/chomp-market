@@ -1,6 +1,6 @@
 {
   "name": "Pet Den",
-  "desc": "Raise your monster in a private rollup. Feed, play, clean, sleep. Care streaks evolve it into a pricier NFT.",
+  "desc": "Raise a roster of monsters in a private rollup. Care, train, breed, send them to work in the City, and evolve them into pricier NFTs.",
   "engine": "html5",
   "thumb": "thumb.png",
   "tags": ["pet", "casual", "collect", "private"],

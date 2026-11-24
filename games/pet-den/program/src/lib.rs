@@ -17,6 +17,8 @@ use sim::{Action, SimError, Stats};
 declare_id!("AUeP7rEoWiEwEpysKxecj7y5AXjHg76weMUZhHp5SXbr"); // placeholder, replaced at deploy
 
 pub const PET: &[u8] = b"pet";
+/// Roster size: Pet PDA = ["pet", owner, [idx]], idx < MAX_PETS.
+pub const MAX_PETS: u8 = 8;
 /// Real seconds per sim tick on chain. ponytail: client demo runs 2 s/tick; tune before mainnet.
 pub const TICK_SECS: i64 = 60;
 
@@ -25,12 +27,15 @@ pub const TICK_SECS: i64 = 60;
 pub mod pet_den {
     use super::*;
 
-    /// Base layer. One pet per owner. Also creates its PER permission: only the owner can read it in the TEE.
-    pub fn create_pet(ctx: Context<CreatePet>, dna: u32) -> Result<()> {
+    /// Base layer. Up to MAX_PETS per owner (roster slot idx). Also creates its PER permission: only the owner can read it in the TEE.
+    // TODO(solana): dna from MagicBlock VRF (hatch) instead of the client; breed(a, b) ix mixes two adult pets' DNA (see build/sim.js breed).
+    pub fn create_pet(ctx: Context<CreatePet>, idx: u8, dna: u32) -> Result<()> {
+        require!(idx < MAX_PETS, PetError::RosterFull);
         let pet = &mut ctx.accounts.pet;
         pet.owner = ctx.accounts.owner.key();
+        pet.idx = idx;
         pet.dna = dna;
-        pet.stats = Stats::default();
+        pet.stats = Stats::new(dna);
         pet.last_ts = Clock::get()?.unix_timestamp;
         pet.bump = ctx.bumps.pet;
         // TODO(solana): NFT mint a Metaplex Core asset for the pet (tier attribute) so it lists on the portal market.
@@ -41,15 +46,15 @@ pub mod pet_den {
             .payer(&ctx.accounts.owner)
             .system_program(&ctx.accounts.system_program)
             .args(MembersArgs { members: Some(vec![Member { flags: AUTHORITY_FLAG | TX_LOGS_FLAG, pubkey: owner }]) })
-            .invoke_signed(&[&[PET, owner.as_ref(), &[pet.bump]]])?;
+            .invoke_signed(&[&[PET, owner.as_ref(), &[idx], &[pet.bump]]])?;
         Ok(())
     }
 
     /// Base layer. Delegates the permission and the pet to the TEE validator (pass it as remaining_accounts[0]).
-    pub fn delegate_pet<'info>(ctx: Context<'info, DelegatePet<'info>>) -> Result<()> {
+    pub fn delegate_pet<'info>(ctx: Context<'info, DelegatePet<'info>>, idx: u8) -> Result<()> {
         let owner = ctx.accounts.owner.key();
-        let (_, bump) = Pubkey::find_program_address(&[PET, owner.as_ref()], &crate::ID);
-        let seeds: &[&[u8]] = &[PET, owner.as_ref(), &[bump]];
+        let (_, bump) = Pubkey::find_program_address(&[PET, owner.as_ref(), &[idx]], &crate::ID);
+        let seeds: &[&[u8]] = &[PET, owner.as_ref(), &[idx], &[bump]];
         let validator = ctx.remaining_accounts.first();
         let a = &ctx.accounts;
         DelegatePermissionCpiBuilder::new(&a.permission_program)
@@ -65,7 +70,7 @@ pub mod pet_den {
             .delegation_program(&a.delegation_program)
             .validator(validator)
             .invoke_signed(&[seeds])?;
-        a.delegate_pet(&a.owner, &[PET, owner.as_ref()], DelegateConfig { validator: validator.map(|v| v.key()), ..Default::default() })?;
+        a.delegate_pet(&a.owner, &[PET, owner.as_ref(), &[idx]], DelegateConfig { validator: validator.map(|v| v.key()), ..Default::default() })?;
         Ok(())
     }
 
@@ -74,17 +79,22 @@ pub mod pet_den {
         catch_up(&mut ctx.accounts.pet)
     }
 
-    /// PER, gasless. action: 0 feed, 1 play(score 0-10 from the mini-game), 2 clean, 3 sleep/wake.
+    /// PER, gasless. action: 0 feed, 1 play(score 0-10 from the mini-game), 2 clean, 3 sleep/wake, 4 train, 5 interact,
+    /// 6 move habitat (score = habitat index). item: 1 = an inventory item boosts feed/play/clean.
+    // TODO(solana): item = burn 1 SPL item token (treat/toy/soap) from the owner in the same tx.
     // TODO(solana): session keys (#[session_auth_or], session-keys 3.1.1) so care taps need no wallet popup.
-    pub fn care(ctx: Context<Care>, action: u8, score: u8) -> Result<()> {
+    pub fn care(ctx: Context<Care>, action: u8, score: u8, item: u8) -> Result<()> {
         require_keys_eq!(ctx.accounts.signer.key(), ctx.accounts.pet.owner, PetError::NotOwner);
         let pet = &mut ctx.accounts.pet;
         catch_up(pet)?;
         let a = match action {
-            0 => Action::Feed,
-            1 => Action::Play(score), // ponytail: client-reported score, it's your own pet; VRF/replay if pets get staked
-            2 => Action::Clean,
+            0 => Action::Feed(item),
+            1 => Action::Play(score, item), // ponytail: client-reported score, it's your own pet; VRF/replay if pets get staked
+            2 => Action::Clean(item),
             3 => Action::Sleep,
+            4 => Action::Train,
+            5 => Action::Interact,
+            6 => Action::Habitat(score),
             _ => return err!(PetError::BadAction),
         };
         pet.stats.act(a).map_err(PetError::from)?;
@@ -100,8 +110,8 @@ pub mod pet_den {
         pet.stats.evolve().map_err(PetError::from)?;
         // TODO(solana): Magic Action after commit -> update the Core asset's tier attribute + pay the streak bonus into the pet's earnings vault.
         pet.exit(&crate::ID)?;
-        let (owner, bump) = (pet.owner, pet.bump);
-        let seeds: &[&[u8]] = &[PET, owner.as_ref(), &[bump]];
+        let (owner, idx, bump) = (pet.owner, pet.idx, pet.bump);
+        let seeds: &[&[u8]] = &[PET, owner.as_ref(), &[idx], &[bump]];
         let a = &ctx.accounts;
         CommitAndUndelegatePermissionCpiBuilder::new(&a.permission_program)
             .authority(&a.owner, true)
@@ -130,6 +140,7 @@ fn catch_up(pet: &mut Pet) -> Result<()> {
 #[derive(InitSpace)]
 pub struct Pet {
     pub owner: Pubkey,
+    pub idx: u8,
     pub dna: u32,
     pub stats: Stats,
     pub last_ts: i64,
@@ -137,10 +148,11 @@ pub struct Pet {
 }
 
 #[derive(Accounts)]
+#[instruction(idx: u8)]
 pub struct CreatePet<'info> {
     #[account(mut)]
     pub owner: Signer<'info>,
-    #[account(init, payer = owner, space = 8 + Pet::INIT_SPACE, seeds = [PET, owner.key().as_ref()], bump)]
+    #[account(init, payer = owner, space = 8 + Pet::INIT_SPACE, seeds = [PET, owner.key().as_ref(), &[idx]], bump)]
     pub pet: Account<'info, Pet>,
     /// CHECK: permission PDA, derived + checked by the permission program
     #[account(mut)]
@@ -153,11 +165,12 @@ pub struct CreatePet<'info> {
 
 #[delegate]
 #[derive(Accounts)]
+#[instruction(idx: u8)]
 pub struct DelegatePet<'info> {
     #[account(mut)]
     pub owner: Signer<'info>,
     /// CHECK: the pet PDA being delegated
-    #[account(mut, del, seeds = [PET, owner.key().as_ref()], bump)]
+    #[account(mut, del, seeds = [PET, owner.key().as_ref(), &[idx]], bump)]
     pub pet: UncheckedAccount<'info>,
     /// CHECK: permission PDA, checked by the permission program
     #[account(mut)]
@@ -179,7 +192,7 @@ pub struct DelegatePet<'info> {
 #[derive(Accounts)]
 pub struct Care<'info> {
     pub signer: Signer<'info>,
-    #[account(mut, seeds = [PET, pet.owner.as_ref()], bump = pet.bump)]
+    #[account(mut, seeds = [PET, pet.owner.as_ref(), &[pet.idx]], bump = pet.bump)]
     pub pet: Account<'info, Pet>,
 }
 
@@ -188,7 +201,7 @@ pub struct Care<'info> {
 pub struct Evolve<'info> {
     #[account(mut)]
     pub owner: Signer<'info>,
-    #[account(mut, seeds = [PET, owner.key().as_ref()], bump = pet.bump)]
+    #[account(mut, seeds = [PET, owner.key().as_ref(), &[pet.idx]], bump = pet.bump)]
     pub pet: Account<'info, Pet>,
     /// CHECK: permission PDA, checked by the permission program
     #[account(mut)]
@@ -216,6 +229,10 @@ pub enum PetError {
     NotOwner,
     #[msg("unknown action")]
     BadAction,
+    #[msg("roster full")]
+    RosterFull,
+    #[msg("cooldown: try again in a few ticks")]
+    Cooldown,
 }
 
 impl From<SimError> for PetError {
@@ -227,6 +244,8 @@ impl From<SimError> for PetError {
             SimError::NotReady => PetError::NotReady,
             SimError::MaxTier => PetError::MaxTier,
             SimError::Sick => PetError::Sick,
+            SimError::Cooldown => PetError::Cooldown,
+            SimError::BadAction => PetError::BadAction,
         }
     }
 }
