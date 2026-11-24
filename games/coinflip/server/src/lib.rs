@@ -1,17 +1,16 @@
 //! Coinflip server: one commit-reveal coin + one chatroom per platform matchId. Plain JSON over HTTP
 //! (the client polls every 1 s), shape set by games/coinflip/client/src/lib/api.ts.
 //!
-//! - `POST /room {matchId, account, side, auth}`: host binds a side to its open match. Server picks a 32-byte
-//!   seed, publishes `commit = sha256(seed)`. auth = wallet signature over `coinflip:<id>:<side>`.
+//! - `POST /room {matchId, account, side, sig}`: host (Match.a) binds a side to its match. Server picks a 32-byte
+//!   seed, publishes `commit = sha256(seed)`. sig = base58 ed25519 over utf8 `coinflip:<id>:<side>`.
 //! - `GET /rooms`, `GET /room/{id}`: `{matchId, side, commit, result?, seed?, clientSeed?, bot}`; seed only after the flip.
-//! - `POST /flip {matchId, account, clientSeed, auth}`: a seated player of the live match supplies the client seed
-//!   (first one wins). `result = sha256(seed ‖ clientSeed)[0] & 1`, winner seat = 0 if result == host side,
-//!   else 1 (TODO(solana): post result on-chain). auth = wallet signature over `coinflip:<id>:<clientSeed>`.
+//! - `POST /flip {matchId, account, clientSeed, sig}`: Match.a or Match.b (both seats filled) supplies the client
+//!   seed (first one wins). `result = sha256(seed ‖ clientSeed)[0] & 1`, winner seat = 0 if result == host side,
+//!   else 1; referee posts `settle(id, winner)`. sig = base58 ed25519 over utf8 `coinflip:<id>:<clientSeed>`.
 //! - `GET /chat/{id}?since=<ts>` -> `[{from, text, ts}]` newer than `since`; `POST /chat/{id} {from, text}`.
 //!   Last 50 lines per room, text <= 200 chars, `from` is display only.
 //!
-//! Signature nonce = sha256(message) (the client can't get a server nonce over plain HTTP).
-//! Without CONTRACT_ID: dev mode, no chain checks and nothing reported.
+//! Without REFEREE_KEYPAIR: dev mode, no chain checks and nothing settled.
 use axum::extract::{Path, Query, Request, State};
 use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::middleware::{self, Next};
@@ -21,7 +20,7 @@ use axum::{Json, Router};
 use chain::Chain;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -100,6 +99,9 @@ pub struct App {
     chain: Arc<Chain>,
     // ponytail: one global lock over all rooms; per-room locks if match count gets large
     rooms: Mutex<HashMap<u64, Room>>,
+    /// Flipped match ids: never re-created after ROOM_TTL, so a dropped settle can't be re-rolled.
+    // ponytail: in memory, lost on restart; a settled match's closed account still rejects it
+    finished: Mutex<HashSet<u64>>,
 }
 
 impl App {
@@ -107,39 +109,30 @@ impl App {
         Arc::new(App {
             chain,
             rooms: Mutex::default(),
+            finished: Mutex::default(),
         })
     }
 
-    /// Chain match must be ours, in `status`, with `account` seated per `seated`, and auth must sign `msg`.
+    /// Chain match of this game must seat `account` per `seated`, and `sig` must sign `msg`. Returns chain [a, b].
     async fn check(
         &self,
         id: u64,
         m: &Value,
         msg: &str,
-        status: &str,
-        seated: fn(&Value, &str) -> bool,
-    ) -> Result<(), &'static str> {
-        if self.chain.contract.is_empty() {
-            return Ok(());
+        seated: fn(&chain::MatchInfo, &str) -> bool,
+    ) -> Result<[String; 2], &'static str> {
+        if !self.chain.enabled() {
+            return Ok(Default::default());
         }
         let account = m["account"].as_str().unwrap_or("");
-        let cm: Value = self
-            .chain
-            .view(&self.chain.contract, "get_match", json!({ "match_id": id }))
-            .await
-            .ok_or("match not found")?;
-        if cm["game"] != GAME
-            || cm["status"] != status
-            || account.is_empty()
-            || !seated(&cm, account)
-        {
+        let cm = self.chain.match_info(id).await.ok_or("match not found")?;
+        if account.is_empty() || !seated(&cm, account) {
             return Err("not your coinflip match");
         }
-        let nonce: [u8; 32] = Sha256::digest(msg).into();
-        if !self.chain.verify_auth(&m["auth"], account, msg, nonce).await {
+        if !chain::verify_sig(account, msg.as_bytes(), m["sig"].as_str().unwrap_or("")) {
             return Err("wallet signature check failed");
         }
-        Ok(())
+        Ok([cm.a, cm.b.unwrap_or_default()])
     }
 }
 
@@ -191,12 +184,12 @@ async fn create(State(app): State<Arc<App>>, Json(m): Json<Value>) -> Res {
         .filter(|s| *s < 2)
         .ok_or(bad("side must be 0 or 1"))? as u8;
     let msg = format!("{GAME}:{id}:{side}");
-    app.check(id, &m, &msg, "open", |cm, a| cm["host"] == a)
+    app.check(id, &m, &msg, |cm, a| cm.a == a)
         .await
         .map_err(bad)?;
     let mut rooms = app.rooms.lock().unwrap();
     rooms.retain(|_, r| r.born.elapsed() < ROOM_TTL);
-    if rooms.contains_key(&id) {
+    if rooms.contains_key(&id) || app.finished.lock().unwrap().contains(&id) {
         return Err(bad("room already exists"));
     }
     let r = rooms.entry(id).or_insert(Room::new(side));
@@ -210,8 +203,8 @@ async fn do_flip(State(app): State<Arc<App>>, Json(m): Json<Value>) -> Res {
         .filter(|s| !s.is_empty() && s.len() <= 64)
         .ok_or(bad("bad clientSeed"))?;
     let msg = format!("{GAME}:{id}:{cs}");
-    app.check(id, &m, &msg, "live", |cm, a| {
-        cm["host"] == a || cm["guest"] == a
+    let pair = app.check(id, &m, &msg, |cm, a| {
+        cm.b.is_some() && (cm.a == a || cm.b.as_deref() == Some(a))
     })
     .await
     .map_err(bad)?;
@@ -221,7 +214,22 @@ async fn do_flip(State(app): State<Arc<App>>, Json(m): Json<Value>) -> Res {
         let result = flip(&r.seed, cs);
         r.result = Some(result);
         r.client_seed = Some(cs.into());
-        // TODO(solana): post winner seat (`result == r.side` -> 0, else 1) on-chain (was report_result).
+        app.finished.lock().unwrap().insert(id);
+        if app.chain.enabled() {
+            let (chain, w) = (app.chain.clone(), (result != r.side) as u8);
+            tokio::spawn(async move {
+                // confirm + rebroadcast inside; retried because an RPC 429 on the match re-read reads as
+                // "match not found" (a closed = already-settled match just fails again, harmlessly).
+                // Still unsettled → `cancel` refunds both after 2 h.
+                for n in 1..=5u64 {
+                    match chain.settle(id, w, &pair).await {
+                        Ok(sig) => return eprintln!("settle {id} winner {w}: {sig}"),
+                        Err(e) => eprintln!("settle {id} winner {w} try {n} failed: {e}"),
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(5 * n)).await;
+                }
+            });
+        }
     }
     Ok(Json(r.view(id)))
 }

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
-import { PLATFORM_ID, usePlatform } from '@xyz/platform';
+import { balanceChanged, bs58, ix, myMatches, randomMatchId, readMatch, useWallet } from '@xyz/platform';
 import { commitOf, flip, hex } from '@/lib/flip.ts';
+import { type Reclaim, reclaims, remember } from '@/lib/stakes.ts';
 
 export type Side = 0 | 1; // 0 heads, 1 tails
 export type Room = {
@@ -11,21 +12,23 @@ export type Room = {
 export type Api = {
   demo: boolean; me: string | null;
   listRooms(): Promise<Room[]>;
-  createRoom(side: Side, stakeYocto: string): Promise<number>;
+  createRoom(side: Side, stakeLamports: string): Promise<number>;
   joinRoom(matchId: number): Promise<void>;
   cancelRoom(matchId: number): Promise<void>;
   watchRoom(matchId: number, cb: (r: Room | null) => void): () => void; // returns stop
   chat(matchId: number, cb: (lines: Line[]) => void): () => void; // returns stop
   say(matchId: number, from: string, text: string): Promise<void>; // rejects on 429 / bad room
+  reclaims(): Promise<Reclaim[]>; // stuck stakes from matches this browser opened/joined
+  reclaim(r: Reclaim): Promise<void>;
 };
 export type Line = { from: string; text: string; ts: number };
 
 const q = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams();
 export const BOT_MS = q.has('fast') ? 5_000 : 60_000;
-export const FEE_BPS = 10; // ponytail: mirrors contract default; read config().fee_bps if it changes
-const SERVER_URL = q.get('server') ?? 'http://localhost:8790';
+export const FEE_BPS = 250; // ponytail: mirrors chomp Config.fee_bps; read the Config PDA if it changes
+// Under the portal (/g/) the market proxies /g/coinflip-ws -> :8791. location.origin is "null" in the sandboxed iframe, so build it.
+const SERVER_URL = q.get('server') ?? (typeof location !== 'undefined' && location.pathname.startsWith('/g/') ? `${location.protocol}//${location.host}/g/coinflip-ws` : 'http://localhost:8791');
 const GAME = 'coinflip';
-const ONE_YOCTO = '1';
 const rand = (n: number) => crypto.getRandomValues(new Uint8Array(n));
 
 const poll = <T,>(f: () => Promise<T>, cb: (r: T) => void) => {
@@ -57,7 +60,7 @@ async function settle(id: number) {
 }
 // in-play showcase: someone vs house bot, settles when first watched, then a fresh one appears
 const showcase = async () => {
-  const r = await open('whale.sol', 0, '1500000000000000000000000');
+  const r = await open('whale.sol', 0, '1500000000');
   rooms.set(r.matchId, { ...r, guest: 'house-bot', bot: true, status: 'live' });
 };
 const watched = new Set<number>();
@@ -68,14 +71,15 @@ const post = (id: number, from: string, text: string) => {
   return old.length === 0;
 };
 const seeded = Promise.all([
-  open('alice.testnet', 0, '500000000000000000000000'),
-  open('degen.sol', 1, '2000000000000000000000000'),
+  open('alice.testnet', 0, '500000000'),
+  open('degen.sol', 1, '2000000000'),
   open('free-roller.testnet', 1, '0'),
   showcase(),
 ]);
 
 const demoApi: Api = {
   demo: true, me: ME,
+  reclaims: async () => [], reclaim: async () => {},
   listRooms: async () => { await seeded; return [...rooms.values()].filter((r) => r.status !== 'done').reverse(); },
   createRoom: async (side, stake) => {
     const r = await open(ME, side, stake);
@@ -106,64 +110,70 @@ const demoApi: Api = {
   say: async (id, from, text) => { if (post(id, from, text.slice(0, 200))) setTimeout(() => post(id, 'house-bot', 'gl hf'), 800); },
 };
 
-/* ---------- live: platform contract + coinflip server ---------- */
-type MatchView = { id: number; host: string; guest: string | null; stake: string; status: string; winner: number | null; created_ms: number };
-// TODO backend: server room shape may shift
+/* ---------- live: chomp program (stake escrow) + coinflip server (commit-reveal, referee settles) ---------- */
 type ServerRoom = { matchId: number; side: Side; commit: string; result?: Side; seed?: string; clientSeed?: string; bot?: boolean };
+type Chain = { a: string; b: string | null; stake: bigint; created: number };
 
 const getJson = <T,>(path: string, body?: unknown): Promise<T> =>
   fetch(SERVER_URL + path, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : undefined)
-    .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${path}: ${r.status}`))));
+    .then(async (r) => (r.ok ? r.json() : Promise.reject(new Error((await r.json().catch(() => null))?.error ?? `${path}: ${r.status}`))));
 
-const merge = (m: MatchView, s?: ServerRoom): Room => ({
-  matchId: m.id, host: m.host, guest: m.guest ?? undefined, stake: m.stake, createdMs: m.created_ms,
-  side: s?.side ?? 0, commit: s?.commit ?? '', result: s?.result, seed: s?.seed, clientSeed: s?.clientSeed, bot: s?.bot,
-  status: m.status === 'open' ? 'open' : m.status === 'live' ? 'live' : 'done', // refund = done w/o winner
-  winner: m.winner == null ? undefined : (m.winner as Side),
-});
+// Match account is closed on settle/cancel, so the last seen chain view is kept for finished rooms.
+const seen = new Map<number, Chain>();
+const merge = (id: number, m: Chain | null, s?: ServerRoom): Room | null => {
+  if (m) seen.set(id, m);
+  const c = m ?? seen.get(id);
+  if (!c) return null;
+  return {
+    matchId: id, host: c.a, guest: c.b ?? undefined, stake: String(c.stake), createdMs: c.created * 1000,
+    side: s?.side ?? 0, commit: s?.commit ?? '', result: s?.result, seed: s?.seed, clientSeed: s?.clientSeed, bot: s?.bot,
+    status: !m ? 'done' : m.b ? 'live' : 'open', // gone = settled or cancelled
+    winner: s?.result == null ? undefined : ((s.result === s.side ? 0 : 1) as Side),
+  };
+};
 
-// TODO(solana): chain seam for coinflip; calls go through @xyz/platform stubs (throw "coming soon").
 export function useApi(): Api {
-  const p = usePlatform();
-  const me = p.w.signedAccountId || null;
+  const w = useWallet();
+  const me = w.signedAccountId || null;
   return useMemo(() => {
     if (q.has('demo') || !me) return demoApi;
-    // NEP-413 auth, nonce = sha256(message)
-    const auth = async (message: string) => {
-      const nonce = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(message)));
-      const s = await p.w.signMessage({ message, recipient: PLATFORM_ID, nonce });
-      return { publicKey: String(s.publicKey), signature: String(s.signature) };
-    };
-    const flipped = new Set<number>();
+    const sig = async (message: string) => bs58.encode(await w.signBytes(new TextEncoder().encode(message)));
+    const flipped = new Set<number>(), paid = new Set<number>();
     const get = async (id: number) => {
-      const [m, s] = await Promise.all([p.view<MatchView | null>('get_match', { match_id: id }), getJson<ServerRoom>(`/room/${id}`).catch(() => undefined)]);
-      return m && merge(m, s);
+      const [m, s] = await Promise.all([readMatch(GAME, id), getJson<ServerRoom>(`/room/${id}`).catch(() => undefined)]);
+      return merge(id, m, s);
     };
     return {
       demo: false, me,
       listRooms: async () => {
-        const [ms, ss] = await Promise.all([
-          p.view<MatchView[]>('list_matches', { from: 0, limit: 50, game: GAME }),
-          getJson<ServerRoom[]>('/rooms').catch(() => []),
-        ]);
-        const byId = new Map(ss.map((s) => [s.matchId, s]));
-        return ms.filter((m) => m.status === 'open').map((m) => merge(m, byId.get(m.id)));
+        const ss = await getJson<ServerRoom[]>('/rooms');
+        const rs = await Promise.all(ss.filter((s) => s.result == null).map((s) => readMatch(GAME, s.matchId).then((m) => merge(s.matchId, m, s))));
+        return rs.filter((r): r is Room => r != null && r.status !== 'done'); // live too, so a seated player can get back in after a reload
       },
       createRoom: async (side, stake) => {
-        const id = Number(await p.call('create_match', { game: GAME, stake, bettable: false, monster_id: null }, ONE_YOCTO));
-        await getJson('/room', { matchId: id, account: me, side, auth: await auth(`${GAME}:${id}:${side}`) });
-        return id;
+        const id = randomMatchId(), n = Number(id);
+        remember(GAME, n); // before send: survives reload if the server loses the room
+        await w.sendIxs([ix.openMatch(me, GAME, id, stake)]);
+        try { await getJson('/room', { matchId: n, account: me, side, sig: await sig(`${GAME}:${n}:${side}`) }); }
+        catch (e) { await w.sendIxs([ix.cancel(me, GAME, id, me, null)]).catch(() => {}); throw e; } // server refused: refund
+        return n;
       },
-      joinRoom: async (id) => { await p.call('join_match', { match_id: id, monster_id: null }, ONE_YOCTO); },
-      cancelRoom: async (id) => { await p.call('cancel_match', { match_id: id }); },
+      joinRoom: async (id) => { remember(GAME, id); await w.sendIxs([ix.joinMatch(me, GAME, id)]); },
+      reclaims: async () => {
+        for (const id of await myMatches(GAME, me).catch(() => [])) remember(GAME, id);
+        return reclaims(GAME, me, (id) => readMatch(GAME, id));
+      },
+      reclaim: async (r) => { await w.sendIxs([ix.cancel(me, GAME, r.id, r.m.a, r.m.b)]); balanceChanged(); },
+      cancelRoom: async (id) => { await w.sendIxs([ix.cancel(me, GAME, id, me, null)]); },
       watchRoom: (id, cb) => poll(async () => {
         const r = await get(id);
-        // seated + live + no result yet -> send our client seed once. TODO backend: who seeds may shift
+        // seated + live + no result yet -> send our client seed once (first seed wins server-side)
         if (r?.status === 'live' && r.result == null && (r.host === me || r.guest === me) && !flipped.has(id)) {
           flipped.add(id);
           const clientSeed = hex(rand(8));
-          getJson('/flip', { matchId: id, account: me, clientSeed, auth: await auth(`${GAME}:${id}:${clientSeed}`) }).catch(() => flipped.delete(id));
+          getJson('/flip', { matchId: id, account: me, clientSeed, sig: await sig(`${GAME}:${id}:${clientSeed}`) }).catch(() => flipped.delete(id));
         }
+        if (r?.status === 'done' && !paid.has(id)) { paid.add(id); balanceChanged(); } // referee paid out
         return r;
       }, cb),
       chat: (id, cb) => {
