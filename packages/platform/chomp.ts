@@ -124,7 +124,8 @@ function bridgeWallet(): Wallet {
   const pending = new Map<number, [(v: any) => void, (e: Error) => void]>(); // eslint-disable-line @typescript-eslint/no-explicit-any
   const req = <T,>(method: string, params?: unknown) => new Promise<T>((res, rej) => {
     const id = ++n;
-    const t = setTimeout(() => { pending.delete(id); rej(new Error(`portal ${method} timed out`)); }, 60_000);
+    // connect waits on a human login (email OTP, wallet popup): give it 5 min
+    const t = setTimeout(() => { pending.delete(id); rej(new Error(`portal ${method} timed out`)); }, method === 'connect' ? 300_000 : 60_000);
     pending.set(id, [(v) => { clearTimeout(t); res(v); }, (e) => { clearTimeout(t); rej(e); }]);
     parent.postMessage({ chomp: 1, type: 'req', data: { id, method, params } }, '*');
   });
@@ -139,7 +140,8 @@ function bridgeWallet(): Wallet {
   });
   return {
     signedAccountId: '', loading: false, network: NETWORK, kind: 'bridge',
-    signIn: async () => { const { wallet } = await req<{ wallet: string }>('connect'); setWallet({ ...cur, signedAccountId: wallet }); },
+    // abandoned/failed login = still signed out, not an uncaught error in the game
+    signIn: async () => { const r = await req<{ wallet: string }>('connect').catch(() => null); if (r?.wallet) setWallet({ ...cur, signedAccountId: r.wallet }); },
     signOut: async () => {}, // portal owns the wallet
     getBalance: async (a) => BigInt((await req<{ value: number }>('rpc', { method: 'getBalance', params: [a] })).value),
     sendIxs: (ixs, o) => req<string>('tx', { ixs, er: !!o?.er }).finally(balanceChanged),
