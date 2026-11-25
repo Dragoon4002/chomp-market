@@ -11,6 +11,7 @@ COPY games/brawler/server games/brawler/server
 COPY games/ribbon/sim games/ribbon/sim
 COPY games/ribbon/server games/ribbon/server
 COPY games/keyfall/server games/keyfall/server
+COPY games/keyfall/client/public/words.txt games/keyfall/client/public/words.txt
 COPY games/coinflip/server games/coinflip/server
 COPY games/monster-siege/server games/monster-siege/server
 RUN cargo build --release --locked -p "$BIN" && cp "target/release/$BIN" /server
