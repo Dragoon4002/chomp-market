@@ -10,7 +10,11 @@ const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 // NEXT_PUBLIC_GAMES_ORIGIN (e.g. http://localhost:3200, `node scripts/serve-games.ts`): builds served off the market server,
 // so games keep running while the market reloads, and get their own origin (safe to allow storage).
 const GAMES_ORIGIN = process.env.NEXT_PUBLIC_GAMES_ORIGIN?.replace(/\/$/, "");
-export const gameSrc = (g: Game) => g.url ?? (GAMES_ORIGIN ? `${GAMES_ORIGIN}/g/${g.slug}/${g.entry}` : `${BASE}/g/${g.slug}/${g.entry}`);
+// NEXT_PUBLIC_GAME_SERVERS = {"<slug>": "wss://…"}: hosted game servers (Render), passed as ?server= because Vercel
+// rewrites can't proxy WebSockets. Unset = games use the /g/<slug>-ws proxy (local dev). monster-siege reads ?ws=.
+const SERVERS: Record<string, string> = JSON.parse(process.env.NEXT_PUBLIC_GAME_SERVERS || "{}");
+const serverQ = (g: Game) => SERVERS[g.slug] ? `?${g.slug === "monster-siege" ? "ws" : "server"}=${encodeURIComponent(SERVERS[g.slug])}` : "";
+export const gameSrc = (g: Game) => g.url ?? (GAMES_ORIGIN ? `${GAMES_ORIGIN}/g/${g.slug}/${g.entry}` : `${BASE}/g/${g.slug}/${g.entry}`) + serverQ(g);
 export const ownOrigin = (g: Game) => !!(g.url || GAMES_ORIGIN);
 // thumb/hero: "/x" = market public, else relative to games/<slug>/build
 const file = (g: Game, f: string) => (f.startsWith("/") ? BASE + f : `${BASE}/g/${g.slug}/${f}`);

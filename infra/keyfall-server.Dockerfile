@@ -10,6 +10,7 @@ COPY games/ribbon/sim games/ribbon/sim
 COPY games/ribbon/server games/ribbon/server
 COPY games/keyfall/server games/keyfall/server
 COPY games/coinflip/server games/coinflip/server
+COPY games/monster-siege/server games/monster-siege/server
 # word list is include_str!'d from the client's public dir
 COPY games/keyfall/client/public/words.txt games/keyfall/client/public/words.txt
 RUN --mount=type=cache,target=/usr/local/cargo/registry \

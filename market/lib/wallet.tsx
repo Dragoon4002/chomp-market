@@ -7,8 +7,8 @@ import { toSolanaWalletConnectors, useSignMessage, useSignTransaction, useWallet
 import { balance, bus, getWallet, KIND_KEY, NETWORK, sendTx, setWallet, SIGNED_OUT, subscribe } from "../../packages/platform/chomp";
 
 export * from "../../packages/platform/chomp";
-// ponytail: Privy hidden for now (burner only); re-enable = `process.env.NEXT_PUBLIC_PRIVY_APP_ID || ""`
-export const PRIVY_APP_ID: string = "";
+// Privy = the wallet connector when set (Connect opens Privy). Unset (local dev) = burner fallback.
+export const PRIVY_APP_ID: string = process.env.NEXT_PUBLIC_PRIVY_APP_ID || "";
 export const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? ""; // same-origin faucet: requestFaucet(pk, BASE)
 
 export const useChompWallet = () => useSyncExternalStore(subscribe, getWallet, getWallet);

@@ -8,4 +8,5 @@
 !games/ribbon/server/**
 !games/keyfall/server/**
 !games/coinflip/server/**
+!games/monster-siege/server/**
 **/target

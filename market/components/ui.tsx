@@ -120,22 +120,18 @@ const itemCls = "rounded-xl font-bold";
 function ConnectMenu() {
   const [open, setOpen] = useState(false);
   useEffect(() => {
-    const on = () => setOpen(true);
+    const on = () => (PRIVY_APP_ID ? loginPrivy() : setOpen(true));
     addEventListener("chomp:connect", on);
     return () => removeEventListener("chomp:connect", on);
   }, []);
+  if (PRIVY_APP_ID) return <Btn small onClick={loginPrivy}>Connect</Btn>; // Privy modal: email/social embedded wallet or Phantom etc.
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild><Btn small>Connect</Btn></DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-60 rounded-2xl border-3 border-ink bg-panel-2 p-1.5 shadow-drop">
         <DropdownMenuItem className={cx(itemCls, "flex-col items-start gap-0")} onClick={() => void connectBurner()}>
-          Burner wallet<span className="text-xs font-semibold text-muted">Devnet key kept in this browser</span>
+          Burner wallet<span className="text-xs font-semibold text-muted">Devnet key kept in this browser (no NEXT_PUBLIC_PRIVY_APP_ID)</span>
         </DropdownMenuItem>
-        {PRIVY_APP_ID && (
-          <DropdownMenuItem className={cx(itemCls, "flex-col items-start gap-0")} onClick={loginPrivy}>
-            Privy<span className="text-xs font-semibold text-muted">Email / social, or Phantom etc.</span>
-          </DropdownMenuItem>
-        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

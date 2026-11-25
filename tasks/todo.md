@@ -550,3 +550,11 @@ Execution: 1 agent per game + 1 market, disjoint files, each verifies w/ headles
 - Devnet staked e2e through real portal UI (2 burners each): brawler (KO), keyfall, ribbon, coinflip — referee settle confirmed, balances = stake·2·0.975. Host cancel refunds; reclaim works.
 - Score games: monster-siege, tomb-delve submit_score on chain; pet-den create_pet; sealed-house lot+bid+settle.
 - Open: public devnet RPC 429s (use dedicated RPC); coinflip art still NEAR "N"; portal doesn't forward ?room= to iframe; 390px iframe tiny (fullscreen); pet-den/sealed-house sigs not in portal footer; monster-siege no tapeHash; keyfall no Chomp.result score.
+
+# Submission prep (2026-11-25)
+- [x] polish: portal footer shows last bridge tx sig; Privy hidden (PRIVY_APP_ID=""); monster-siege tapeHash; keyfall Chomp.result; brawler reclaim msg
+- [x] README + handoff rewritten
+- [x] branches: devnet-platform + 9 game branches (brawler, keyfall, coinflip, ribbon, 2048, monster-seige, pet-den, sealed-house, tomb-delve); staging = octopus merge, pushed. main untouched
+- [x] Vercel project chomp-market-sol (rootDirectory=market, prebuilt deploy): https://chomp-market-sol.vercel.app (old alias chomp-market-one.vercel.app) — games static in public/g, FAUCET_SECRET env, live faucet drip ok
+- [ ] host game servers (brawler/keyfall/ribbon/coinflip/monster-siege) + set <SLUG>_SERVER on Vercel, redeploy
+- [ ] dedicated devnet RPC

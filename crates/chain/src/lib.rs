@@ -1,5 +1,5 @@
 //! Chain seam shared by game servers: reads `chomp` Match PDAs, posts referee `settle`, checks seat signatures.
-//! Spec: tasks/devnet-spec.md §1 + §4. Env: SOLANA_RPC, CHOMP_PROGRAM_ID, REFEREE_KEYPAIR (unset = free rooms only).
+//! Spec: tasks/devnet-spec.md §1 + §4. Env: SOLANA_RPC, CHOMP_PROGRAM_ID, REFEREE_SECRET or REFEREE_KEYPAIR (unset = free rooms only).
 use base64::{Engine, engine::general_purpose::STANDARD as B64};
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use serde_json::{Value, json};
@@ -30,8 +30,11 @@ impl Chain {
     pub fn from_env(game_slug: &str) -> Self {
         let env = |k: &str, d: &str| std::env::var(k).ok().filter(|v| !v.is_empty()).unwrap_or(d.into());
         let program = pubkey(&env("CHOMP_PROGRAM_ID", CHOMP_ID)).expect("CHOMP_PROGRAM_ID");
-        let referee = std::env::var("REFEREE_KEYPAIR").ok().filter(|p| !p.is_empty()).map(|p| {
-            let raw = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("REFEREE_KEYPAIR {p}: {e}"));
+        // REFEREE_SECRET = keypair JSON array (hosted env, e.g. Render); else REFEREE_KEYPAIR = file path (local)
+        let secret = std::env::var("REFEREE_SECRET").ok().filter(|v| !v.is_empty());
+        let file = || std::env::var("REFEREE_KEYPAIR").ok().filter(|p| !p.is_empty())
+            .map(|p| std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("REFEREE_KEYPAIR {p}: {e}")));
+        let referee = secret.or_else(file).map(|raw| {
             let bytes: Vec<u8> = serde_json::from_str(&raw).expect("REFEREE_KEYPAIR: not a json byte array");
             let kp: [u8; 64] = bytes.try_into().expect("REFEREE_KEYPAIR: need 64 bytes");
             SigningKey::from_keypair_bytes(&kp).expect("REFEREE_KEYPAIR: bad keypair")

@@ -1,0 +1,81 @@
+# Render Blueprint: Rust game servers for Chomp Market (market itself is on Vercel).
+# REFEREE_SECRET (sync: false) = contents of .keys/referee-<slug>.json, set in the dashboard. Unset = free rooms only.
+services:
+  - type: web
+    name: chomp-brawler
+    runtime: docker
+    plan: free
+    branch: staging
+    dockerfilePath: infra/game-server.Dockerfile
+    dockerContext: .
+    envVars:
+      - key: BIN
+        value: brawler-server
+      - key: SOLANA_RPC
+        value: https://api.devnet.solana.com
+      - key: CHOMP_PROGRAM_ID
+        value: 4m5U9NJaLNyDzZj926jE9Y9nvKYJf82MQEcabbbGqcNf
+      - key: HISTORY_FILE
+        value: /data/history.jsonl
+      - key: REFEREE_SECRET
+        sync: false
+  - type: web
+    name: chomp-keyfall
+    runtime: docker
+    plan: free
+    branch: staging
+    dockerfilePath: infra/game-server.Dockerfile
+    dockerContext: .
+    envVars:
+      - key: BIN
+        value: keyfall-server
+      - key: SOLANA_RPC
+        value: https://api.devnet.solana.com
+      - key: CHOMP_PROGRAM_ID
+        value: 4m5U9NJaLNyDzZj926jE9Y9nvKYJf82MQEcabbbGqcNf
+      - key: REFEREE_SECRET
+        sync: false
+  - type: web
+    name: chomp-ribbon
+    runtime: docker
+    plan: free
+    branch: staging
+    dockerfilePath: infra/game-server.Dockerfile
+    dockerContext: .
+    envVars:
+      - key: BIN
+        value: ribbon-server
+      - key: SOLANA_RPC
+        value: https://api.devnet.solana.com
+      - key: CHOMP_PROGRAM_ID
+        value: 4m5U9NJaLNyDzZj926jE9Y9nvKYJf82MQEcabbbGqcNf
+      - key: TAPE_DIR
+        value: /data/tapes
+      - key: REFEREE_SECRET
+        sync: false
+  - type: web
+    name: chomp-coinflip
+    runtime: docker
+    plan: free
+    branch: staging
+    dockerfilePath: infra/game-server.Dockerfile
+    dockerContext: .
+    envVars:
+      - key: BIN
+        value: coinflip-server
+      - key: SOLANA_RPC
+        value: https://api.devnet.solana.com
+      - key: CHOMP_PROGRAM_ID
+        value: 4m5U9NJaLNyDzZj926jE9Y9nvKYJf82MQEcabbbGqcNf
+      - key: REFEREE_SECRET
+        sync: false
+  - type: web
+    name: chomp-siege
+    runtime: docker
+    plan: free
+    branch: staging
+    dockerfilePath: infra/game-server.Dockerfile
+    dockerContext: .
+    envVars:
+      - key: BIN
+        value: monster-siege-server
