@@ -2,7 +2,7 @@
   "name": "Monster Siege",
   "desc": "Your monsters guard your tower and lead squads down the lane. Crack their core first.",
   "engine": "html5",
-  "thumb": "thumb.png",
+  "thumb": "thumb.webp",
   "hero": "hero.webp",
   "tags": ["strategy", "cards", "tower-defense", "pvp"],
   "entry": "index.html",
