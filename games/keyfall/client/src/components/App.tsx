@@ -5,6 +5,9 @@ import { Title } from '@/components/Title.tsx';
 import { LocalGame, OnlineGame } from '@/components/Game.tsx';
 import { unlock } from '@/components/sfx.ts';
 
+// Chomp portal bridge (market/public/chomp-sdk.js, loaded in layout). Absent when run standalone.
+declare global { interface Window { Chomp?: { ready(): void; result(r: { winner?: string; score?: number; tapeHash?: string }): void } } }
+
 export type Screen =
   | { k: 'title' }
   | { k: 'practice'; name: string; n: number }
@@ -14,6 +17,7 @@ function Root() {
   const [s, set] = useState<Screen>({ k: 'title' });
   // music starts on the first user gesture (autoplay policy) and persists across screens, like MusicManager
   useEffect(() => {
+    window.Chomp?.ready(); // portal replies with the session -> bridge wallet signs in
     const go = () => unlock();
     addEventListener('pointerdown', go, { once: true });
     addEventListener('keydown', go, { once: true });

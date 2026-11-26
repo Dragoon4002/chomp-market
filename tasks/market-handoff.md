@@ -1,11 +1,14 @@
-# Market handoff (2026-11-24)
+# Market handoff (2026-11-25)
 
 Market v2 = hosted "Shop" look + Fractal/Ronin patterns. Plan + review: `tasks/todo.md` → "Market v2". Lessons: `tasks/lessons.md`.
 
 ## Run
-- Market: `cd market && bun dev` → :3100 (a dev server may already be on :3110; reuse it). Open with `?demo` — chain is a stub (`TODO(solana)`), so without demo pages are empty.
+- Market: `cd market && bun dev` → :3100 (a dev server may already be on :3110; reuse it). Open with `?demo`: marketplace data is mock (no market program/indexer yet). Wallet/faucet/games are real devnet (see README, `tasks/devnet-spec.md`).
 - Games detached: `npm run games` → :3200 (`/g/<slug>/`). `market/.env.local` has `NEXT_PUBLIC_GAMES_ORIGIN=http://localhost:3200` so `/play/<slug>` embeds from there.
 - Check: `cd market && bunx tsc --noEmit -p . && bun run build`.
+- Game servers: `REFEREE_KEYPAIR=.keys/referee-<slug>.json cargo run -p <slug>-server` (brawler 8787, ribbon 8788, keyfall 8789, monster-siege 8790, coinflip 8791), reached at `/g/<slug>-ws` (market rewrite / serve-games proxy; override `<SLUG>_SERVER`). Clients: `npm run build` in each `games/<slug>/client` → `games/<slug>/build`.
+- Devnet: `scripts/devnet-setup.sh`; keys in gitignored `.keys/`. Env list in README.
+- Public demo: `NEXT_PUBLIC_GAMES_ORIGIN= bun run build && bunx next start -p 3120` (games same-origin) then `ngrok http 3120`.
 
 ## Map
 | what | where |
@@ -27,5 +30,8 @@ Market v2 = hosted "Shop" look + Fractal/Ronin patterns. Plan + review: `tasks/t
 - Every page must work with `?demo`, and at 390px with no horizontal scroll.
 - Verify with headless Chrome screenshots: `google-chrome --headless=new --window-size=1440,2000 --virtual-time-budget=15000 --screenshot=out.png "http://localhost:3110/<route>?demo"`.
 
-## Open gaps (need Solana program / indexer)
-Buyer/seller in activity, per-monster sale history, tx links on sales, offers/trait bids, cart as one tx (`CartDrawer`), spin via MagicBlock VRF (`a.spin`). All marked `TODO(solana)`.
+## Open gaps
+- Marketplace needs a program + indexer: buyer/seller in activity, per-monster sale history, tx links on sales, offers/trait bids, cart as one tx (`CartDrawer`), spin via VRF (`a.spin`). Still `TODO(solana)` stubs.
+- ER not used (pet-den on base layer). Privy hidden/untested. Public devnet RPC 429s.
+- Portal: `?room=` not forwarded to iframe; 390px iframe small; pet-den/sealed-house sigs not in footer.
+- Chain: sealed-house sell_back drain, unverified `submit_score`, no fee withdraw, in-memory finished ids. Full list: README "Known limitations".

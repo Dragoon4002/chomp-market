@@ -7,8 +7,7 @@
     "typing",
     "pvp"
   ],
-  "url": "http://localhost:3004",
   "settle": "result",
   "license": "MIT",
-  "soon": true
+  "entry": "index.html"
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { MARKET_URL, NETWORK, WalletProvider, PLATFORM_ID, fmt, toYocto, useBalance, usePlatform } from '@xyz/platform';
+import { PublicKey } from '@solana/web3.js';
+import { CHOMP_ID, NETWORK, SYSTEM_ID, WalletProvider, balanceChanged, bs58, conn, fmt, ix, pda, readMatch, requestFaucet, toLamports, useBalance, useWallet } from '@xyz/platform';
 import { BOOST_TICKS, CLOSE_AT, Sim, TICK_HZ, WIN_ROUNDS, input } from './sim.ts';
 import { bot } from './bot.ts';
 import { COLORS, NAMES, render } from './draw.ts';
@@ -7,23 +8,24 @@ import { ROSTER } from './riders.ts';
 import { fromCode, toCode } from './code.ts';
 
 const DEMO = new URLSearchParams(location.search).has('demo');
+const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? ''; // /g/ribbon: public/ files live under it
+// Chomp portal bridge (market/public/chomp-sdk.js, loaded in layout). Absent when run standalone.
+declare global { interface Window { Chomp?: { ready(): void; result(r: { winner: number | null }): void } } }
 // brawler lib/format.ts: never show raw 64-hex implicit ids
 const short = (a: string | null | undefined) =>
   !a ? '—' : /^[0-9a-f]{64}$/.test(a) ? `${a.slice(0, 3)}...${a.slice(-3)}` : a.length > 22 ? `${a.slice(0, 20)}…` : a;
 const GAME = 'ribbon';
 
 interface MatchView { id: number; game: string; host: string; guest: string | null; stake: string; bettable: boolean; status: string; winner: number | null }
-type Auth = { publicKey: string; signature: string };
 interface Api {
-  account: string | null; balance: string | null;
-  signIn: () => void; signOut: () => void;
+  account: string | null; balance: string | null; kind: string;
+  signIn: () => void; signOut: () => void; faucet: () => Promise<unknown>;
   list: () => Promise<MatchView[]>;
   get: (id: number) => Promise<MatchView | null>;
   cancel: (id: number) => Promise<unknown>;
-  create: (stakeAmt: string, bettable: boolean) => Promise<number>;
+  create: (stakeAmt: string) => Promise<number>;
   join: (id: number) => Promise<unknown>;
-  claim: (id: number) => Promise<unknown>;
-  sign: (id: number, nonceHex: string) => Promise<Auth>;
+  sign: (id: number, nonceHex: string) => Promise<string>; // base58 sig
 }
 type Screen = { s: 'home'; create?: boolean } | { s: 'play'; id: number; watch: boolean; practice?: boolean };
 type Line = { from: string; seat: number; text: string; ts: number };
@@ -31,46 +33,52 @@ type Result = { id: number; seat: number; winner: number | null; score: number[]
 
 let demoCreated = 0; // 1 = demo race #8 open
 const demoApi: Api = {
-  account: 'demo-player.testnet', balance: (25n * 10n ** 24n).toString(),
-  signIn: () => {}, signOut: () => alert('Demo: no wallet'),
+  account: 'demo-player.testnet', balance: (25n * 10n ** 9n).toString(), kind: '',
+  signIn: () => {}, signOut: () => alert('Demo: no wallet'), faucet: async () => {},
   list: async () => [
-    { id: 7, game: GAME, host: 'kestrel.testnet', guest: null, stake: toYocto(0.5), bettable: true, status: 'open', winner: null },
-    { id: 6, game: GAME, host: 'moth.testnet', guest: null, stake: toYocto(1), bettable: false, status: 'open', winner: null },
-    { id: 5, game: GAME, host: 'quill.testnet', guest: 'ferro.testnet', stake: toYocto(2), bettable: true, status: 'live', winner: null },
+    { id: 7, game: GAME, host: 'kestrel.testnet', guest: null, stake: toLamports(0.5), bettable: false, status: 'open', winner: null },
+    { id: 6, game: GAME, host: 'moth.testnet', guest: null, stake: toLamports(1), bettable: false, status: 'open', winner: null },
+    { id: 5, game: GAME, host: 'quill.testnet', guest: 'ferro.testnet', stake: toLamports(2), bettable: false, status: 'live', winner: null },
   ],
   get: async (id) => {
-    if (id === 8) return { id, game: GAME, host: 'demo-player.testnet', guest: null, stake: toYocto(0.1), bettable: true, status: demoCreated ? 'open' : 'refund', winner: null };
+    if (id === 8) return { id, game: GAME, host: 'demo-player.testnet', guest: null, stake: toLamports(0.1), bettable: false, status: demoCreated ? 'open' : 'refund', winner: null };
     return (await demoApi.list()).find((m) => m.id === id) ?? null;
   },
   cancel: async () => { demoCreated = 0; },
   create: async () => { demoCreated = 1; return 8; }, // demo: nobody joins, the bot fills in after BOT_WAIT
   join: async () => {},
-  claim: async () => alert('Demo: nothing to claim'),
-  sign: async () => ({ publicKey: '', signature: '' }),
+  sign: async () => '',
 };
 
-// TODO(solana): chain seam for ribbon; calls go through @xyz/platform stubs (throw "coming soon").
+// Chain seam: chomp program escrows stakes (Match PDA id = room code), ribbon server referee settles.
+const MATCH_LEN = 129; // 8 disc | game 32 | id 8 | a 32 | b 32 | stake 8 | created 8 | bump 1
+const toView = (id: number, m: { a: string; b: string | null; stake: bigint }): MatchView =>
+  ({ id, game: GAME, host: m.a, guest: m.b, stake: String(m.stake), bettable: false, status: m.b ? 'live' : 'open', winner: null });
 function Live() {
-  const p = usePlatform();
+  const w = useWallet();
   const { balance } = useBalance();
+  const me = w.signedAccountId;
   const api: Api = {
-    account: p.w.signedAccountId || null, balance,
-    signIn: () => p.w.signIn(), signOut: () => p.w.signOut(),
-    list: () => p.view<MatchView[]>('list_matches', { from: 0, limit: 50, game: GAME }),
-    get: (id) => p.view<MatchView | null>('get_match', { match_id: id }),
-    cancel: (id) => p.call('cancel_match', { match_id: id }),
-    create: async (stake, bettable) => {
-      const r = await p.call('create_match', { game: GAME, stake: toYocto(stake), bettable, monster_id: null }, '1');
-      if (r == null) throw new Error('create_match returned nothing');
-      return Number(r);
+    account: me || null, balance, kind: w.kind,
+    signIn: () => w.signIn(), signOut: () => w.signOut(),
+    faucet: () => requestFaucet(me),
+    // every unsettled ribbon Match PDA (settled/cancelled ones are closed)
+    list: async () => (await conn().getProgramAccounts(new PublicKey(CHOMP_ID), {
+      filters: [{ dataSize: MATCH_LEN }, { memcmp: { offset: 8, bytes: pda.game(GAME) } }],
+    })).map(({ account: { data: d } }) => {
+      const v = new DataView(d.buffer, d.byteOffset, d.byteLength), b = new PublicKey(d.subarray(80, 112)).toBase58();
+      return toView(Number(v.getBigUint64(40, true)), { a: new PublicKey(d.subarray(48, 80)).toBase58(), b: b === SYSTEM_ID ? null : b, stake: v.getBigUint64(112, true) });
+    }),
+    get: async (id) => { const m = await readMatch(GAME, id); return m && toView(id, m); },
+    cancel: (id) => w.sendIxs([ix.cancel(me, GAME, id, me, null)]),
+    create: async (stake) => {
+      // ponytail: id < 24^4 so the 4-letter room code round-trips (code.ts); a clash with a live match just fails the tx, retry
+      const id = Math.floor(Math.random() * 24 ** 4);
+      await w.sendIxs([ix.openMatch(me, GAME, id, toLamports(stake || 0))]);
+      return id;
     },
-    join: (id) => p.call('join_match', { match_id: id, monster_id: null }, '1'),
-    claim: (id) => p.call('claim', { match_id: id }),
-    sign: async (id, nonceHex) => {
-      const nonce = Uint8Array.from(nonceHex.match(/../g) ?? [], (h) => parseInt(h, 16));
-      const s = await p.w.signMessage({ message: `ribbon:${id}`, recipient: PLATFORM_ID, nonce });
-      return { publicKey: String(s.publicKey), signature: String(s.signature) };
-    },
+    join: (id) => w.sendIxs([ix.joinMatch(me, GAME, id)]),
+    sign: async (id, nonceHex) => bs58.encode(await w.signBytes(new TextEncoder().encode(`chomp:${GAME}:${id}:${nonceHex}`))),
   };
   return <Screens api={api} />;
 }
@@ -79,8 +87,26 @@ export const App = () => (DEMO ? <Screens api={demoApi} /> : <WalletProvider con
 
 function Screens({ api }: { api: Api }) {
   const [sc, go] = useState<Screen>({ s: 'home' });
+  useEffect(() => { window.Chomp?.ready(); }, []); // portal replies with the session (wallet)
   if (sc.s === 'home') return <Home api={api} go={go} create={sc.create} />;
   return <Play key={sc.id} api={api} id={sc.id} watch={sc.watch} practice={sc.practice} go={go} />;
+}
+
+// Portal iframe is sandboxed without allow-forms: the browser drops submission before `submit` fires.
+// So a click on the submit button (or Enter in an input) calls `go` directly.
+function Form({ go, className, children }: { go: () => void; className?: string; children: React.ReactNode }) {
+  return (
+    <form className={className} onSubmit={(e) => e.preventDefault()}
+      onKeyDownCapture={(e) => {
+        if (e.key !== 'Enter' || (e.target as HTMLElement).tagName !== 'INPUT') return;
+        e.preventDefault();
+        const btn = e.currentTarget.querySelector<HTMLButtonElement>('button:not([type=button])');
+        if (btn) btn.click(); else go(); // via the button so its disabled state applies
+      }}
+      onClick={(e) => { if ((e.target as HTMLElement).closest('button:not([type=button])')) go(); }}>
+      {children}
+    </form>
+  );
 }
 
 // Native <dialog>: Esc, focus trap and backdrop for free.
@@ -105,7 +131,7 @@ function Home({ api, go, create }: { api: Api; go: (s: Screen) => void; create?:
   const [code, setCode] = useState(ROOM ?? '');
   const [rows, setRows] = useState<MatchView[] | null>(null);
   const [stake, setStake] = useState('0.1');
-  const [bettable, setBettable] = useState(true);
+  const lam = (() => { try { return toLamports(stake.trim() || '0'); } catch { return null; } })(); // null = unparseable (e.g. 1e-7)
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const load = () => { setRows(null); api.list().then(setRows).catch((e) => { setRows([]); setErr(String(e)); }); };
@@ -143,8 +169,8 @@ function Home({ api, go, create }: { api: Api; go: (s: Screen) => void; create?:
         </button>
         {/* brawler Title.tsx hub-counters: balance chip -> funds, wallet chip -> account, demo exit */}
         <div className="counters">
-          {me && <button className="chip ctr" onClick={() => setPop('funds')} title="Platform balance, deposit / withdraw"><img src="/ui/coin.webp" alt="" /><i>Balance</i>{api.balance === null ? '…' : `${fmt(api.balance)} SOL`}</button>}
-          <button className="chip ctr wallet" onClick={() => (me ? setPop('account') : api.signIn())}><img src="/ui/icon-wallet.webp" alt="" />{me ? short(me) : 'Connect wallet'}</button>
+          {me && <button className="chip ctr" onClick={() => setPop('funds')} title="Wallet balance"><img src={`${BASE}/ui/coin.webp`} alt="" /><i>Balance</i>{api.balance === null ? '…' : `${fmt(api.balance)} SOL`}</button>}
+          <button className="chip ctr wallet" onClick={() => (me ? setPop('account') : api.signIn())}><img src={`${BASE}/ui/icon-wallet.webp`} alt="" />{me ? short(me) : 'Connect wallet'}</button>
           {DEMO && <a className="chip ctr demo-exit" href={location.pathname}>Demo mode · exit</a>}
         </div>
         <button className="chip gear" aria-label="Settings" onClick={() => setPop('settings')} />
@@ -152,15 +178,16 @@ function Home({ api, go, create }: { api: Api; go: (s: Screen) => void; create?:
 
       {pop === 'play' && (
         <Modal title="New race" close={close}>
-          <form className="create" onSubmit={(e) => { e.preventDefault(); run(async () => { setWaitId(await api.create(stake, bettable)); setPop('wait'); }); }}>
+          <Form className="create" go={() => run(async () => { setWaitId(await api.create(stake)); setPop('wait'); })}>
             <label className="field">Stake
               <span className="stake"><input type="number" min="0" step="0.05" value={stake} autoFocus onChange={(e) => setStake(e.target.value)} /><b>SOL</b></span>
             </label>
             <div className="presets">{['0.1', '0.5', '1', '5'].map((v) => <button type="button" key={v} className={`preset${stake === v ? ' on' : ''}`} onClick={() => setStake(v)}>{v}</button>)}</div>
-            <label className="toggle"><input type="checkbox" checked={bettable} onChange={(e) => setBettable(e.target.checked)} /><span>Bettable <i>spectators can bet on the market</i></span></label>
-            <p className="muted small">Winner takes the {fmt(2n * BigInt(toYocto(Number(stake) || 0)))} SOL pot, minus a small fee. Balance: {fmt(api.balance)} SOL · <a href={MARKET_URL} target="_blank" rel="noreferrer">deposit</a></p>
-            <button className="btn-play wide" disabled={busy}><span className="tri" />{busy ? 'Creating…' : 'Start race'}</button>
-          </form>
+            {lam == null
+              ? <p className="err">Enter a plain decimal stake (max 9 decimals).</p>
+              : <p className="muted small">Winner takes the {fmt(2n * BigInt(lam))} SOL pot, minus a 2.5% fee. Balance: {fmt(api.balance)} SOL</p>}
+            <button className="btn-play wide" disabled={busy || lam == null}><span className="tri" />{busy ? 'Creating…' : 'Start race'}</button>
+          </Form>
           {err && <p className="err">{err}</p>}
         </Modal>
       )}
@@ -172,20 +199,20 @@ function Home({ api, go, create }: { api: Api; go: (s: Screen) => void; create?:
             <li><b>Steer</b> with arrows/WASD, or swipe on phones. Hit a wall or a ribbon and you crash.</li>
             <li>Ribbons <b>fade after 6 s</b>. After 20 s the <b>ring closes in</b>.</li>
             <li><b>One boost</b> per round (Space / tap). First to <b>{WIN_ROUNDS} rounds</b> wins.</li>
-            <li>Both riders stake the same. <b>Winner takes the pot.</b> Bettable races let spectators bet.</li>
+            <li>Both riders stake the same. <b>Winner takes the pot.</b></li>
           </ol>
         </Modal>
       )}
 
       {pop === 'matches' && (
         <Modal title="Matches" close={close}>
-          <form className="code-join" onSubmit={(e) => { e.preventDefault(); if (code) enter(code); }}>
+          <Form className="code-join" go={() => { if (code) enter(code); }}>
             <label htmlFor="room">Room code</label>
             <div className="code-row">
               <input id="room" maxLength={4} autoCapitalize="characters" autoComplete="off" spellCheck={false} placeholder="ABCD" value={code} autoFocus={!!ROOM} onChange={(e) => setCode(e.target.value.toUpperCase())} />
               <button className="btn-sm" disabled={busy || !code}>Enter</button>
             </div>
-          </form>
+          </Form>
           {rows == null ? <p className="muted">Loading matches…</p> : !shown.length ? (
             <div className="empty"><p className="muted">No open races right now.</p><button className="btn-play" onClick={() => setPop(me ? 'play' : null)}>Create one</button></div>
           ) : (
@@ -213,11 +240,12 @@ function Home({ api, go, create }: { api: Api; go: (s: Screen) => void; create?:
       {pop === 'funds' && (
         <Modal title="Balance" close={close}>
           <div className="funds">
-            <img src="/ui/coin.webp" alt="" />
+            <img src={`${BASE}/ui/coin.webp`} alt="" />
             <b>{fmt(api.balance)} <small>SOL</small></b>
-            <span className="muted small">Platform balance — stakes come out of it, winnings go back in. Shared by every game.</span>
+            <span className="muted small">Wallet balance (devnet). Stakes are held by the match account; the referee pays the winner.</span>
           </div>
-          <div className="acts"><a className="btn-play link-btn" href={MARKET_URL} target="_blank" rel="noreferrer">Deposit / withdraw ↗</a></div>
+          {api.kind === 'burner' && <div className="acts"><button className="btn-play" disabled={busy} onClick={() => run(async () => { await api.faucet(); })}>Get devnet SOL</button></div>}
+          {err && <p className="err">{err}</p>}
         </Modal>
       )}
 
@@ -228,7 +256,7 @@ function Home({ api, go, create }: { api: Api; go: (s: Screen) => void; create?:
             <dt>Balance</dt><dd>{fmt(api.balance)} SOL · <button className="link" onClick={() => setPop('funds')}>manage</button></dd>
             <dt>Network</dt><dd>{NETWORK}{DEMO && ' (demo)'}</dd>
           </dl>
-          <div className="acts"><button className="btn-out" onClick={() => { api.signOut(); close(); }}>Disconnect</button></div>
+          {api.kind !== 'bridge' && <div className="acts"><button className="btn-out" onClick={() => { api.signOut(); close(); }}>Disconnect</button></div>}
         </Modal>
       )}
 
@@ -297,7 +325,7 @@ function Waiting({ api, id, go, close }: { api: Api; id: number; go: (s: Screen)
         <b>{code}</b>
         <div className="copy-row">
           <button className="btn-sm ghost" onClick={() => copy('code', code)}>{copied === 'code' ? 'Copied!' : 'Copy code'}</button>
-          <button className="btn-sm ghost" onClick={() => copy('link', link)}>{copied === 'link' ? 'Copied!' : 'Copy link'}</button>
+          {location.origin !== 'null' && /* portal sandbox: opaque origin, no shareable game URL */ <button className="btn-sm ghost" onClick={() => copy('link', link)}>{copied === 'link' ? 'Copied!' : 'Copy link'}</button>}
         </div>
       </div>
       {!joined && <div className="bot-bar"><span style={{ width: `${(left / BOT_WAIT) * 100}%` }} /></div>}
@@ -337,8 +365,10 @@ function Preview() {
   return <canvas ref={cv} className="board preview" aria-label="bot-vs-bot preview" />;
 }
 
+// Under /g/ (portal or dev basePath) the host proxies /g/ribbon-ws -> :8788; else standalone default.
 const serverUrl = () =>
-  new URLSearchParams(location.search).get('server') ?? process.env.NEXT_PUBLIC_SERVER_URL ?? `ws://${location.hostname}:8788`;
+  new URLSearchParams(location.search).get('server') ?? process.env.NEXT_PUBLIC_SERVER_URL ??
+  (location.pathname.startsWith('/g/') ? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/g/ribbon-ws` : `ws://${location.hostname}:8788`);
 
 const SWIPE = 20; // px
 const COARSE = typeof matchMedia !== 'undefined' && matchMedia('(pointer:coarse)').matches;
@@ -403,7 +433,7 @@ function Play({ api, id, watch, practice, go }: { api: Api; id: number; watch: b
         if (m.t === 'hello') {
           if (watch) return send({ t: 'watch', matchId: id });
           if (!api.account) return setStatus('connect wallet to play');
-          try { send({ t: 'auth', matchId: id, account: api.account, auth: await api.sign(id, m.nonce) }); setStatus('waiting for opponent…'); }
+          try { send({ t: 'auth', matchId: id, account: api.account, sig: await api.sign(id, m.nonce) }); setStatus('waiting for opponent…'); }
           catch (err) { setStatus(`sign failed: ${err instanceof Error ? err.message : err}`); }
         } else if (m.t === 'sync') {
           mySeat = m.seat; setSeat(m.seat);
@@ -471,11 +501,11 @@ function Chat({ lines, say }: { lines: Line[]; say: (text: string) => void }) {
       <ol>{[...lines].reverse().map((l, i) => (
         <li key={lines.length - i}><b style={l.seat >= 0 ? { color: COLORS[l.seat] } : undefined}>{l.seat >= 0 ? short(l.from) : 'Spectator'}</b> {l.text}</li>
       ))}</ol>
-      <form onSubmit={(e) => { e.preventDefault(); if (text.trim()) { say(text); setText(''); } }}>
+      <Form go={() => { if (text.trim()) { say(text); setText(''); } }}>
         {/* stopPropagation: steering keys (WASD / Space) listen on window */}
         <input value={text} maxLength={200} placeholder="Say something…" aria-label="Chat message" autoComplete="off"
           onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
-      </form>
+      </Form>
     </details>
   );
 }
@@ -510,10 +540,11 @@ const SnailGlyph = () => (
 
 // Result overlay on top of the duel (arena stays visible behind it).
 function Over({ api, sc, go }: { api: Api; sc: Result; go: (s: Screen) => void }) {
-  const [msg, setMsg] = useState('');
   const won = sc.winner != null && sc.winner === sc.seat;
   const head = sc.winner == null ? (sc.reason === 'void' ? 'Match void' : 'Draw')
     : won ? 'You win!' : sc.seat >= 0 ? 'You lose' : `${NAMES[sc.winner]} wins`;
+  useEffect(() => { window.Chomp?.result({ winner: sc.winner }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (sc.practice || DEMO) return; const t = setTimeout(balanceChanged, 6000); return () => clearTimeout(t); }, []); // eslint-disable-line react-hooks/exhaustive-deps -- referee settles on-chain
   return (
     <div className="result-overlay" role="dialog" aria-modal="true" aria-label={head}>
     <section className={`over${won ? ' won' : sc.seat >= 0 && sc.winner != null ? ' lost' : ''}`} style={{ '--c': sc.winner == null ? 'var(--purple)' : COLORS[sc.winner] } as React.CSSProperties}>
@@ -522,11 +553,9 @@ function Over({ api, sc, go }: { api: Api; sc: Result; go: (s: Screen) => void }
       <p className="big"><span style={{ color: COLORS[0] }}>{sc.score[0]}</span> : <span style={{ color: COLORS[1] }}>{sc.score[1]}</span></p>
       {sc.reason !== 'win' && <p className="muted">({sc.reason})</p>}
       <div className="acts">
-        {sc.seat >= 0 && !sc.practice && <button onClick={() => api.claim(sc.id).then(() => setMsg('Claimed')).catch((e) => setMsg(String(e)))}>Claim</button>}
         <button className="ghost" onClick={() => go({ s: 'home', create: true })}>Rematch</button>
         <button className="ghost" onClick={() => go({ s: 'home' })}>Back</button>
       </div>
-      {msg && <p>{msg}</p>}
     </section>
     </div>
   );

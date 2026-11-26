@@ -10,6 +10,7 @@ COPY games/ribbon/sim games/ribbon/sim
 COPY games/ribbon/server games/ribbon/server
 COPY games/keyfall/server games/keyfall/server
 COPY games/coinflip/server games/coinflip/server
+COPY games/monster-siege/server games/monster-siege/server
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
     cargo build --release --locked -p coinflip-server && cp target/release/coinflip-server /coinflip-server

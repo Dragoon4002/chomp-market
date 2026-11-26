@@ -314,7 +314,7 @@ function MonsterItem({ id }: { id: string }) {
                   <Btn tone="ghost" className="flex-1" onClick={() => { addToCart({ kind: "monster", token_id: m.token_id, price: m.price!, name: m.name } satisfies CartLine); toast(`${m.name} added to cart.`); cartOpen.set(true); }}>Add to cart</Btn>
                 </div>
               )}
-              <a href={BRAWLER_URL} className="mt-3 block text-center text-sm font-extrabold text-gold hover:underline">Fight with it in Brawler Arena ↗</a>
+              <a href={BRAWLER_URL} className="mt-3 block text-center text-sm font-extrabold text-gold hover:underline">Fight with it in Brawler Arena →</a>
             </div>
           </Panel>
           <Panel className="p-5">

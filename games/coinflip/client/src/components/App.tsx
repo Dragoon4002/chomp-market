@@ -1,17 +1,21 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { MARKET_URL, NETWORK, WalletProvider, fmt, toYocto, useBalance, usePlatform } from '@xyz/platform';
+import { NETWORK, WalletProvider, fmt, requestFaucet, toLamports, useBalance, useWallet } from '@xyz/platform';
 import { BOT_MS, FEE_BPS, useApi, type Api, type Line, type Room, type Side } from '@/lib/api.ts';
+import type { Reclaim } from '@/lib/stakes.ts';
 import { commitOf, flip, unhex } from '@/lib/flip.ts';
 
 const FACE = ['Heads', 'Tails'];
+const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? ''; // basePath prefix for public/ files
+// Chomp portal bridge (market/public/chomp-sdk.js, loaded in layout). Absent when run standalone.
+declare global { interface Window { Chomp?: { ready(): void } } }
 const short = (h: string) => (h ? `${h.slice(0, 6)}…${h.slice(-4)}` : '—');
 // account display (brawler lib/format.ts): implicit 64-hex -> abc...xyz, long -> 20 + …
 const shortAcct = (a: string) => (/^[0-9a-f]{64}$/.test(a) ? `${a.slice(0, 3)}...${a.slice(-3)}` : a.length > 22 ? `${a.slice(0, 20)}…` : a);
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e)) || 'failed';
-const yocto = (amt: string) => { try { return toYocto(amt.trim() || '0'); } catch { return null; } };
+const yocto = (amt: string) => { try { return toLamports(amt.trim() || '0'); } catch { return null; } };
 const payout = (stake: string) => (2n * BigInt(stake) * BigInt(10_000 - FEE_BPS)) / 10_000n;
-// exact yocto -> SOL string (fmt rounds; MAX must never exceed balance)
-const whole = (y: bigint) => { const s = y.toString().padStart(25, '0'); return `${s.slice(0, -24)}.${s.slice(-24)}`.replace(/\.?0+$/, '') || '0'; };
+// exact lamports -> SOL string (fmt rounds; MAX must never exceed balance)
+const whole = (y: bigint) => { const s = y.toString().padStart(10, '0'); return `${s.slice(0, -9)}.${s.slice(-9)}`.replace(/\.?0+$/, '') || '0'; };
 const amt = (stake: string) => (stake === '0' ? 'FREE' : fmt(stake));
 
 function useImg(src: string) {
@@ -22,10 +26,10 @@ function useImg(src: string) {
 
 // spin.png = 24 frames (0 heads, 12 tails). land: from face -> 3 loops -> to face (4 cases: 0->0, 0->1, 1->0, 1->1).
 function Coin({ face, from = face, mode = 'still', size, onDone }: { face: Side; from?: Side; mode?: 'still' | 'spin' | 'land'; size: number; onDone?: () => void }) {
-  const strip = useImg('/coin/spin.png');
-  const still = useImg(`/coin/${FACE[face].toLowerCase()}.png`);
+  const strip = useImg(`${BASE}/coin/spin.png`);
+  const still = useImg(`${BASE}/coin/${FACE[face].toLowerCase()}.png`);
   const style = { '--s': `${size}px`, '--f': 72 + (face ^ from) * 12, '--at': `${-from * 12 * size}px` } as CSSProperties;
-  if (mode === 'still' && still) return <div className="coin" role="img" aria-label={FACE[face]} style={{ ...style, backgroundImage: `url(/coin/${FACE[face].toLowerCase()}.png)` }} />;
+  if (mode === 'still' && still) return <div className="coin" role="img" aria-label={FACE[face]} style={{ ...style, backgroundImage: `url(${BASE}/coin/${FACE[face].toLowerCase()}.png)` }} />;
   if (strip) return <div className={`coin strip ${mode}`} style={style} onAnimationEnd={onDone} />;
   return <div className={`coin gold ${mode}`} style={style} onAnimationEnd={onDone}><span>{face ? '★' : 'N'}</span></div>;
 }
@@ -37,7 +41,7 @@ const HT = 'ht';
 function Toss({ from, to, size, onDone }: { from: Side; to?: Side; size: number; onDone: () => void }) {
   const [playing, setPlaying] = useState(false);
   const vid = (a: Side, b: Side, play: boolean) => (
-    <video key={`${play ? "play" : "idle"}${a}${b}`} className="toss" src={`/coin/toss-${HT[a]}${HT[b]}.webm`} muted playsInline preload="auto" autoPlay={play}
+    <video key={`${play ? "play" : "idle"}${a}${b}`} className="toss" src={`${BASE}/coin/toss-${HT[a]}${HT[b]}.webm`} muted playsInline preload="auto" autoPlay={play}
       style={{ width: size * 4, opacity: play || !playing ? 1 : 0 }} onPlaying={play ? () => setPlaying(true) : undefined} onEnded={play ? onDone : undefined} />
   );
   return <>{vid(from, from, false)}{to != null && vid(from, to, true)}</>;
@@ -66,23 +70,54 @@ const Eye = () => (
 );
 
 function Top({ api }: { api: Api }) {
-  const p = usePlatform();
+  const w = useWallet();
   const { balance } = useBalance();
+  const [faucet, setFaucet] = useState('');
+  const drip = () => { setFaucet('…'); requestFaucet(w.signedAccountId).then(() => setFaucet(''), (e) => setFaucet(errMsg(e))); };
   return (
     <header className="top">
       {api.demo && <span className="chip">demo</span>}
       <div className="wallet">
-        {/* balance chip -> market deposit (platform-integration §1.2) */}
-        <a className="wchip" href={MARKET_URL} target="_blank" rel="noreferrer" title="Deposit / withdraw">
+        <span className="wchip">
           <Coin face={0} size={26} />
           {api.me && <span className="acct">{shortAcct(api.me)}</span>}
           <span className="bal">{api.demo ? '25' : fmt(balance)} <small>SOL</small></span>
-        </a>
-        {!p.w.signedAccountId
-          ? <button className="btn connect" onClick={() => p.w.signIn()}>Connect</button>
-          : <button className="btn connect" onClick={() => p.w.signOut()}>Disconnect</button>}
+        </span>
+        {/* standalone burner only; inside the portal the portal owns the wallet */}
+        {w.kind === 'burner' && !api.demo && <button className="btn connect" disabled={faucet === '…'} title={faucet || undefined} onClick={drip}>Get devnet SOL</button>}
+        {!w.signedAccountId
+          ? <button className="btn connect" onClick={() => w.signIn()}>Connect</button>
+          : w.kind !== 'bridge' && <button className="btn connect" onClick={() => w.signOut()}>Disconnect</button>}
       </div>
     </header>
+  );
+}
+
+// Stakes still escrowed in matches this browser opened/joined: host can cancel an open seat; a filled seat refunds both after 2 h.
+function ReclaimList({ api }: { api: Api }) {
+  const [rows, setRows] = useState<Reclaim[]>([]);
+  const [msg, setMsg] = useState('');
+  const load = () => { api.reclaims().then(setRows, () => {}); };
+  useEffect(load, [api]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!rows.length) return null;
+  const now = Date.now() / 1000;
+  const go = async (r: Reclaim) => {
+    setMsg('Confirm in your wallet…');
+    try { await api.reclaim(r); setMsg('Stake refunded.'); load(); } catch (e) { setMsg(`Reclaim: ${errMsg(e)}`); }
+  };
+  return (
+    <section className="hint" aria-label="Reclaim stake">
+      <b>Reclaim stake</b>
+      {rows.map((r) => (
+        <p key={r.id}>
+          {fmt(String(r.m.stake))} SOL · {r.m.b ? 'rival joined' : 'seat open'}{' '}
+          {now > r.at
+            ? <button className="btn connect" onClick={() => go(r)}>Reclaim</button>
+            : <small>refund opens {new Date(r.at * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small>}
+        </p>
+      ))}
+      {msg && <p className="err">{msg}</p>}
+    </section>
   );
 }
 
@@ -90,7 +125,7 @@ function Lobby({ api, go }: { api: Api; go: (id: number) => void }) {
   const { balance } = useBalance();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [side, setSide] = useState<Side>(0);
-  const [stake, setStake] = useState('0.1');
+  const [stake, setStake] = useState('0.01');
   const [sort, setSort] = useState('high');
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
@@ -111,7 +146,7 @@ function Lobby({ api, go }: { api: Api; go: (id: number) => void }) {
     go(await api.createRoom(side, y));
   });
   const join = (id: number) => run(`join ${id}`, async () => { await api.joinRoom(id); go(id); });
-  const bal = BigInt(api.demo ? toYocto('25') : balance ?? '0');
+  const bal = BigInt(api.demo ? toLamports('25') : balance ?? '0');
   const scale = (f: (y: bigint) => bigint) => setStake(whole(f(BigInt(yocto(stake) ?? '0'))));
   const sorted = [...rooms].sort((a, b) => +(a.status === 'open') - +(b.status === 'open')
     || (sort === 'new' ? b.matchId - a.matchId : (sort === 'high' ? -1 : 1) * Math.sign(Number(BigInt(a.stake) - BigInt(b.stake)))));
@@ -149,6 +184,7 @@ function Lobby({ api, go }: { api: Api; go: (id: number) => void }) {
         </div>
       </section>
       {err && <p className="err">{err}</p>}
+      <ReclaimList api={api} />
 
       <div className="bar">
         <h2>ALL GAMES</h2>
@@ -160,7 +196,7 @@ function Lobby({ api, go }: { api: Api; go: (id: number) => void }) {
           </select>
         </label>
       </div>
-      {sorted.length === 0 && <p className="hint">No games yet. Create one; no taker in {BOT_MS / 1000}s and the house bot steps in.</p>}
+      {sorted.length === 0 && <p className="hint">No games yet. Create one{api.demo && `; no taker in ${BOT_MS / 1000}s and the house bot steps in`}.</p>}
       <ul className="rooms">
         {sorted.map((r) => (
           <li key={r.matchId} className={r.status}>
@@ -266,7 +302,7 @@ function RoomView({ api, id, back }: { api: Api; id: number; back: () => void })
                 : count > 0 ? <p className="count">FLIPPING<br />IN {count}...</p>
                 : <Toss from={r.side} to={flipped ? r.result! : undefined} size={big} onDone={() => setLanded(true)} />}
             </div>
-            {r.status === 'open' && <p className="wait">{left ? `Waiting for opponent · bot in ${left}s` : 'Calling the house bot…'}</p>}
+            {r.status === 'open' && <p className="wait">{!api.demo ? 'Waiting for opponent' : left ? `Waiting for opponent · bot in ${left}s` : 'Calling the house bot…'}</p>}
             {r.status === 'open' && seat === 0 && <button className="btn sm ghost" onClick={cancel}>Cancel</button>}
             {winner && <p className="won"><i>{(r.winner === seat ? 'You' : winner).toUpperCase()}</i><b>WON</b></p>}
             {err && <p className="err">{err}</p>}
@@ -310,8 +346,11 @@ function Root() {
   );
 }
 
-export const App = () => (
+export const App = () => {
+  useEffect(() => { window.Chomp?.ready(); }, []);
+  return (
   <WalletProvider config={{ network: NETWORK }}>
     <Root />
   </WalletProvider>
-);
+  );
+};

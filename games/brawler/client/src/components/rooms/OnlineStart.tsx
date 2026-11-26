@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Monster } from '@/lib/genes.ts';
 import { DEMO } from '@/lib/demo.ts';
 import { peekRoom } from '@/lib/lobby.ts';
-import { fmt, UNIT, toYocto, useArena } from '@/lib/chain.ts';
+import { fmt, UNIT, toLamports, useArena } from '@/lib/chain.ts';
 import { errText } from '@/lib/format.ts';
 import { prepareFight } from '@/components/Arena.tsx';
 import { Ico } from '@/components/ui.tsx';
@@ -24,7 +24,7 @@ export async function joinRoom(arena: Arena, code: string, mon: Monster, say: (t
   if (r.matchId !== null) {
     if (!arena.ready) return say('Betting contract not configured on this build.');
     if (r.players[0]?.account === arena.account) return say('You are the host of that room.');
-    say(r.stake === '0' ? 'Confirm the join in your wallet…' : `Joining stakes ${fmt(r.stake)} ${UNIT} from your balance (matches the host; winner takes both). Confirm in your wallet…`);
+    say(r.stake === '0' ? 'Confirm the join in your wallet…' : `Joining stakes ${fmt(r.stake)} ${UNIT} from your wallet (matches the host; winner takes both). Confirm in your wallet…`);
     if ((await arena.joinMatch(r.matchId, r.stake, chainId(mon))) !== true && !DEMO) return say(BUSY); // demo returns null
   }
   prepareFight({ kind: 'join', mon, code: r.code, stage: r.stage, account: arena.account ?? '', matchId: r.matchId });
@@ -33,7 +33,7 @@ export async function joinRoom(arena: Arena, code: string, mon: Monster, say: (t
 export function CreateRoom({ mon }: { mon: Monster }) {
   const arena = useArena();
   const [pub, setPub] = useState(true);
-  const [bettable, setBettable] = useState(false);
+  const bettable = false; // spectator betting: no Solana backend yet
   const [view, setView] = useState(true);
   const [stake, setStake] = useState('0');
   const [msg, setMsg] = useState('');
@@ -45,7 +45,7 @@ export function CreateRoom({ mon }: { mon: Monster }) {
     setBusy(true); setMsg('');
     try {
       let matchId: number | null = null;
-      const stakeY = Number(stake) > 0 ? toYocto(stake) : '0';
+      const stakeY = Number(stake) > 0 ? toLamports(stake) : '0';
       if (onChain) {
         if (!arena.ready) throw new Error('Betting contract not configured on this build.');
         setMsg('Confirm in your wallet…');
@@ -67,23 +67,22 @@ export function CreateRoom({ mon }: { mon: Monster }) {
         <div className="stake-presets" role="group" aria-label="Quick stake">
           {['0', '0.5', '1', '5'].map((v) => <button key={v} type="button" className="chip" aria-pressed={stake === v} onClick={() => setStake(v)}>{v === '0' ? 'Free' : `${v} ${UNIT}`}</button>)}
         </div>
-        <p id="stake-help" className="note">{st ? `Your opponent matches ${stake} ${UNIT}. Winner takes both, minus 0.1%.` : bettable ? 'No stake: only spectators bet.' : '0 = friendly match, nothing on-chain.'}</p>
+        <p id="stake-help" className="note">{st ? `Your opponent matches ${stake} ${UNIT}. Winner takes both, minus 2.5%.` : bettable ? 'No stake: only spectators bet.' : '0 = friendly match, nothing on-chain.'}</p>
         <fieldset className="seg" aria-label="Visibility">
           <legend>Visibility</legend>
           <label><input type="radio" name="vis" checked={pub} onChange={() => setPub(true)} /><span className="row-ico"><Ico n="icon-room-public" />Public</span><small>Listed in the lobby</small></label>
           <label><input type="radio" name="vis" checked={!pub} onChange={() => setPub(false)} /><span className="row-ico"><Ico n="icon-room-private" />Private</span><small>Join by code or link</small></label>
         </fieldset>
         {!pub && <label className="toggle row"><input type="checkbox" checked={view} onChange={(e) => setView(e.target.checked)} /><span>Let anyone watch<small>Shown in the lobby as watch-only</small></span></label>}
-        <label className="toggle row"><input type="checkbox" checked={bettable} onChange={(e) => setBettable(e.target.checked)} /><span>Let spectators bet<small>Opens a prediction market on this fight, with or without a stake</small></span></label>
       </div>
       <aside className="ticket" aria-label="Match summary">
         <h3>Match ticket</h3>
         <dl>
           <dt>Fighter</dt><dd>{mon.name}</dd>
           <dt>Your stake</dt><dd>{st ? `${stake} ${UNIT}` : 'Free'}</dd>
-          <dt>Winner gets</dt><dd className="gold">{st ? `${+(st * 2 * 0.999).toFixed(4)} ${UNIT}` : 'Bragging rights'}</dd>
+          <dt>Winner gets</dt><dd className="gold">{st ? `${+(st * 2 * 0.975).toFixed(4)} ${UNIT}` : 'Bragging rights'}</dd>
           <dt>Room</dt><dd>{pub ? 'Listed in lobby' : view ? 'Code only · watchable' : 'Code only'}</dd>
-          <dt>Spectator bets</dt><dd>{bettable ? 'On' : 'Off'}</dd>
+          <dt>Spectator bets</dt><dd>Coming soon</dd>
         </dl>
         <button className="btn big" disabled={busy} onClick={create}><span><Ico n={!arena.account ? 'icon-wallet' : onChain ? 'coin' : 'icon-check'} />{!arena.account ? 'Connect wallet' : onChain ? 'Create and stake' : 'Create room'}</span></button>
         {onChain && <p className="note">Needs a wallet signature{st ? `; ${stake} ${UNIT} is held until the fight ends` : ''}.</p>}
@@ -111,9 +110,10 @@ export function JoinByCode({ mon, invite }: { mon: Monster; invite?: string }) {
     }, () => {});
   }, []);
   return (
-    <form className="code-join" onSubmit={(e) => { e.preventDefault(); if (code.length === 4) join(); }}>
-      <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} placeholder="CODE" maxLength={4} aria-label="Room code" autoCapitalize="characters" autoComplete="off" spellCheck={false} />
-      <button className="btn" disabled={busy || code.length !== 4}><span><Ico n="icon-check" />Join</span></button>
+    // ponytail: no form submit: the portal's sandboxed iframe (no allow-forms) blocks submit events
+    <form className="code-join">
+      <input onKeyDown={(e) => { if (e.key === 'Enter' && code.length === 4 && !busy) join(); }} value={code} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} placeholder="CODE" maxLength={4} aria-label="Room code" autoCapitalize="characters" autoComplete="off" spellCheck={false} />
+      <button type="button" className="btn" disabled={busy || code.length !== 4} onClick={join}><span><Ico n="icon-check" />Join</span></button>
       {msg && <p className="note" role="status">{msg}</p>}
     </form>
   );

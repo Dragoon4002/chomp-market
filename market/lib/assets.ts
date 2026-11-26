@@ -1,8 +1,9 @@
 "use client";
 import { demoApi } from "./demo";
+import { openConnect, useChompWallet } from "./wallet";
 
 export const ASSETS_ID = process.env.NEXT_PUBLIC_ASSETS_ID || "";
-export const BRAWLER_URL = process.env.NEXT_PUBLIC_BRAWLER_URL || "http://localhost:3000";
+export const BRAWLER_URL = process.env.NEXT_PUBLIC_BRAWLER_URL || `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/play/brawler`;
 export const art = (f: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/dash/${f}`;
 export const DEMO =
   process.env.NEXT_PUBLIC_DEMO === "1" ||
@@ -73,14 +74,15 @@ export interface Api {
   spin(m: Machine): Promise<{ skill: number }>;
 }
 
-// TODO(solana): wallet adapter + program/MagicBlock reads; spin = MagicBlock VRF. Signed-out stub: views come back empty, calls throw.
+// Wallet = lib/wallet (burner / Privy). TODO(solana): program/MagicBlock reads; spin = MagicBlock VRF. Signed-out stub: views come back empty, calls throw.
 const SOON = () => Promise.reject(new Error("On-chain trading coming soon (Solana port in progress)"));
 const none = <T,>(v: T) => () => Promise.resolve(v);
 
 export function useAssets(): Api {
+  const w = useChompWallet();
   if (DEMO) return demoApi;
   return {
-    demo: false, account: null, signIn: () => alert("Wallet sign-in coming soon (Solana port in progress)"), signOut: () => {},
+    demo: false, account: w.signedAccountId || null, signIn: openConnect, signOut: () => void w.signOut(),
     skills: none([]), collections: none([]), presales: none([]), monsters: none([]), monster: none(null), history: none([]),
     skillListings: none([]), presaleBought: none(0), presaleAllowed: none(false), isCreator: none(false), holdings: none([]),
     myMonsters: none([]), owed: none("0"), machines: none([]), drops: none([]), spin: SOON,

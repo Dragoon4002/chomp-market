@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { COUNTDOWN_MS, DT_MS, DURATION_MS, Sim, loadWords, type Fx, type View } from './game.ts';
+import { COUNTDOWN_MS, DT_MS, DURATION_MS, BASE, Sim, loadWords, type Fx, type View } from './game.ts';
 
 // view = latest snapshot, at = performance.now() when it arrived (renderer extrapolates ents by vx/vy).
 // fx arrive inside views; they are also queued here, takeFx() drains them once per render.
 export type Match = { view: View | null; at: number; seat: 0 | 1 | -1; code: string | null; matchId: number | null; error: string | null; send(c: string): void; takeFx(): Fx[]; leave(): void; chat?: ChatLine[]; say?(text: string): void };
 export type ChatLine = { from: string; seat: 0 | 1; text: string; ts: number };
-export type OnlineReq = { kind: 'host' | 'join'; name: string; code?: string; matchId?: number; account?: string; sign?: (matchId: number, nonce: string) => Promise<{ publicKey: string; signature: string }> };
+export type OnlineReq = { kind: 'host' | 'join'; name: string; code?: string; matchId?: number; account?: string; sign?: (matchId: number, nonce: string) => Promise<string> };
 type Snap = { view: View; at: number } | null;
 
 const params = typeof location === 'undefined' ? new URLSearchParams() : new URLSearchParams(location.search);
-export const SERVER: string = params.get('server') ?? process.env.NEXT_PUBLIC_SERVER_URL ?? 'ws://localhost:8789';
+// portal (market / serve-games) proxies /g/keyfall-ws -> :8789; `next dev` talks to the server directly
+const PROXIED = typeof location === 'undefined' ? '' : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${BASE}-ws`;
+export const SERVER: string = params.get('server') ?? process.env.NEXT_PUBLIC_SERVER_URL ?? (process.env.NODE_ENV === 'development' ? 'ws://localhost:8789' : PROXIED);
 const GRACE_MS = 15_000;
 const KEY = 'keyfall:seat';
 type Saved = { code: string; token: string; matchId: number | null; at: number };
@@ -88,11 +90,11 @@ export function useOnlineMatch(req: OnlineReq | null): Match {
       ws.current = sock;
       const enter = async (nonce: string) => {
         if (seated) return sock.send(JSON.stringify({ t: 'rejoin', code: seated.code, token: seated.token }));
-        let auth;
+        let sig;
         if (req.matchId != null && req.sign) {
-          try { auth = await sign.current!(req.matchId, nonce); } catch { return setError('Wallet signature needed to take your seat.'); }
+          try { sig = await sign.current!(req.matchId, nonce); } catch { return setError('Wallet signature needed to take your seat.'); }
         }
-        const base = { name: req.name, account: req.account, auth };
+        const base = { name: req.name, account: req.account, sig };
         sock.send(JSON.stringify(req.kind === 'host' ? { t: 'host', ...base, matchId: req.matchId } : { t: 'join', ...base, code: req.code }));
       };
       let nonce = '';

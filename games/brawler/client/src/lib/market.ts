@@ -1,6 +1,6 @@
 // Mirror of the contract's order book (contracts/platform): math, rounding and error messages.
 
-export const ONE = 10n ** 24n; // 1 coin in base units (24 dp)
+export const ONE = 10n ** 9n; // 1 SOL in lamports
 export const UNIT = ONE / 100n; // a winning share pays 0.01 coin
 export const PER_BPS = UNIT / 10_000n; // cost of 1 share at 1 bps
 const BPS = 10_000n;

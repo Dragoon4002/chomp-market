@@ -6,8 +6,7 @@
   "tags": [
     "chance"
   ],
-  "url": "http://localhost:3003",
   "settle": "result",
   "license": "MIT",
-  "soon": true
+  "entry": "index.html"
 }

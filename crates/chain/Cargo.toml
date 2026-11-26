@@ -4,5 +4,13 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-serde = "1"
 serde_json = "1"
+base64 = "0.22"
+bs58 = "0.5"
+ed25519-dalek = "2.2"
+sha2 = "0.10"
+tokio = { version = "1", features = ["rt", "time"] }
+ureq = "3"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }

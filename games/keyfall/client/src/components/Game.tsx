@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { fmt } from '@xyz/platform';
 import { useLocalMatch, useOnlineMatch, type Match, type OnlineReq } from '@/lib/match.ts';
-import { HP } from '@/lib/game.ts';
+import { BASE, HP } from '@/lib/game.ts';
 import { MatchView } from '@/components/Match.tsx';
+import { useKeyfall } from '@/lib/chain.ts';
 import { Backdrop } from '@/components/scene.tsx';
 import { play } from '@/components/sfx.ts';
 
@@ -60,6 +61,7 @@ function shareLink(code: string) {
 }
 
 function Waiting({ m, stake, onMenu }: { m: Match; stake?: string; onMenu: () => void }) {
+  const k = useKeyfall();
   const [copied, setCopied] = useState(false);
   const code = m.code ?? '····';
   const link = m.code ? shareLink(m.code) : '';
@@ -68,6 +70,8 @@ function Waiting({ m, stake, onMenu }: { m: Match; stake?: string; onMenu: () =>
     try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { /* insecure ctx */ }
   };
   const names = m.view!.names;
+  const [err, setErr] = useState('');
+  const refund = m.matchId != null && m.seat === 0 && !names[1]; // host of an unjoined staked room: cancel on-chain
   return (
     <main className="menu">
       <Backdrop />
@@ -85,7 +89,10 @@ function Waiting({ m, stake, onMenu }: { m: Match; stake?: string; onMenu: () =>
         </ul>
         <Chat m={m} />
         {m.error && <p className="err" role="alert">{m.error}</p>}
-        <button className="btn" onClick={onMenu}>Leave room</button>
+        {refund && !err // after a failed refund, offer plain leave (reclaim list on title has the stake)
+          ? <button className="btn" onClick={() => k.cancel(m.matchId!).then(onMenu, (e) => setErr(`Refund failed: ${String(e?.message ?? e)}. If a rival already staked on-chain they are still connecting: wait here, or reclaim both stakes from the title screen after 2 h.`))}>Cancel &amp; refund stake</button>
+          : <button className="btn" onClick={onMenu}>Leave room</button>}
+        {err && <p className="err" role="alert">{err}</p>}
       </div>
     </main>
   );
@@ -101,6 +108,8 @@ function Result({ m, solo, onMenu, onAgain }: { m: Match; solo?: boolean; onMenu
   const head = solo ? (r?.reason === 'ko' ? 'Game Over' : 'City Saved') : w == null ? 'Draw' : w === me ? 'Victory' : 'Defeat';
   const tone = solo ? (r?.reason === 'ko' ? 'lose' : 'win') : w == null ? 'draw' : w === me ? 'win' : 'lose';
   const seats = solo ? [0] as const : [me, (1 - me) as 0 | 1] as const;
+  const score = Math.round(r?.wpm[me] ?? v.wpm); // WPM, as shown below → portal on-chain leaderboard
+  useEffect(() => { window.Chomp?.result({ winner: tone === 'win' ? 'you' : tone === 'lose' ? 'opponent' : 'draw', score }); }, []); // once per result screen
   return (
     <div className="over" role="dialog" aria-modal="true" aria-labelledby="over-h">
       <h2 id="over-h" className={`over-h ${tone}`}>{head}</h2>
@@ -109,8 +118,8 @@ function Result({ m, solo, onMenu, onAgain }: { m: Match; solo?: boolean; onMenu
         {seats.map((s) => (
           <div key={s} className={`over-col ${!solo && w === s ? 'won' : ''}`}>
             <p className="over-name">{solo ? 'Final' : v.names[s] || `Seat ${s + 1}`}{!solo && s === me && <small> (you)</small>}</p>
-            <p className="over-stat"><img src="/svg/hp.svg" alt="" />Health: {Math.max(0, r?.hp[s] ?? v.hp)}<small>/{HP}</small></p>
-            <p className="over-stat"><img src="/svg/wpm.svg" alt="" />WPM: {Math.round(r?.wpm[s] ?? v.wpm)}</p>
+            <p className="over-stat"><img src={`${BASE}/svg/hp.svg`} alt="" />Health: {Math.max(0, r?.hp[s] ?? v.hp)}<small>/{HP}</small></p>
+            <p className="over-stat"><img src={`${BASE}/svg/wpm.svg`} alt="" />WPM: {Math.round(r?.wpm[s] ?? v.wpm)}</p>
           </div>
         ))}
       </div>
@@ -131,12 +140,13 @@ function Chat({ m }: { m: Match }) {
   useEffect(() => { const u = log.current; if (u) u.scrollTop = u.scrollHeight; }, [n]);
   if (!m.say) return null;
   return (
-    <form className="chat" onSubmit={(e) => { e.preventDefault(); if (t.trim()) { m.say!(t); setT(''); } }}>
+    // ponytail: Enter via onKeyDown, not <form>: the portal's sandboxed iframe (no allow-forms) drops form submits
+    <div className="chat">
       <ul ref={log} aria-live="polite" aria-label="Room chat">
         {m.chat!.map((l, i) => <li key={`${l.ts}-${i}`} className={l.seat === m.seat ? 'me' : ''}><b>{l.from}:</b> {l.text}</li>)}
       </ul>
       <input className="field" value={t} maxLength={200} placeholder="Say something..." aria-label="Chat message" autoComplete="off"
-        onChange={(e) => setT(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
-    </form>
+        onChange={(e) => setT(e.target.value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && t.trim()) { m.say!(t); setT(''); } }} />
+    </div>
   );
 }

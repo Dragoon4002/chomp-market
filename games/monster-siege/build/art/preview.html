@@ -1,0 +1,69 @@
+<!doctype html><meta charset="utf-8"><title>Monster Siege art</title>
+<style>body{margin:0;background:#0d0b16}canvas{display:block}</style>
+<canvas id="c"></canvas>
+<script type="module">
+// Landscape mock 1280x720: arena (mapped by its "world" rect) + cores + defenders on plinths + drop highlights + HUD.
+// Needs http (fetch): python3 -m http.server in build/, open /art/preview.html.
+import * as Mp from '../map.js';
+const m = await (await fetch('manifest.json?' + Date.now())).json(), S = m.sprites;
+const img = {}; await Promise.all(Object.entries(S).map(([k, s]) => new Promise((ok) => { const i = new Image(); i.onload = i.onerror = ok; i.src = s.src + '?v=' + m.v; img[k] = i; })));
+const W = 1280, H = 720, Z = 2, c = document.getElementById('c'), g = c.getContext('2d');
+c.width = W * Z; c.height = H * Z; c.style.width = W + 'px'; g.scale(Z, Z);
+// world -> screen: fit the board between the top HUD (~70 px) and the tray (~145 px)
+const sc = (H - 70 - 140) / (Mp.H + 400), ox = W / 2 - Mp.W / 2 * sc, oy = 70 - (-200) * sc;
+const sx = (x) => ox + x * sc, sy = (y) => oy + y * sc, TW = 1000 * sc; // px per world tile
+const HT = 34; // HUD px per tile
+function frame(k, f = 0, hue = null) {
+  const s = S[k], i = img[k], n = s.frames || 1, fw = i.naturalWidth / n, o = document.createElement('canvas');
+  o.width = fw * 2; o.height = i.naturalHeight * 2; const x = o.getContext('2d');
+  x.drawImage(i, fw * f, 0, fw, i.naturalHeight, 0, 0, o.width, o.height);
+  if (hue != null && s.tint) { x.globalCompositeOperation = 'source-atop'; x.globalAlpha = 0.55; x.fillStyle = `hsl(${hue} 85% 50%)`; x.fillRect(0, 0, o.width, o.height); }
+  return o;
+}
+const atHex = (k, h, f = 0, hue = null) => { const s = S[k], [wx, wy] = Mp.center(...h), w = s.w * TW, hh = s.h * TW; g.drawImage(frame(k, f, hue), sx(wx) - s.anchor[0] * w, sy(wy) - s.anchor[1] * hh, w, hh); };
+const put = (k, x, y, o = {}) => { const s = S[k], w = (o.w ?? s.w) * HT, h = (o.h ?? s.h) * HT; g.save(); g.translate(x, y); if (o.flip) { g.translate(w, 0); g.scale(-1, 1); } g.drawImage(frame(k, o.f, o.hue), 0, 0, w, h); g.restore(); return [x, y, w, h]; };
+const txt = (s, x, y, size, col = '#fff', align = 'center') => { g.font = `800 ${size}px system-ui, sans-serif`; g.textAlign = align; g.textBaseline = 'middle'; g.lineJoin = 'round'; g.lineWidth = size / 4; g.strokeStyle = '#120c22'; g.strokeText(s, x, y); g.fillStyle = col; g.fillText(s, x, y); };
+const sub = ([x, y, w, h], r) => [x + r[0] * w, y + r[1] * h, r[2] * w, r[3] * h];
+const fill = ([x, y, w, h], col, p = 1) => { g.fillStyle = col; g.beginPath(); g.roundRect(x, y, w * p, h, h / 2); g.fill(); g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(x + 3, y + 2, w * p - 6, h * 0.3); };
+
+g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+const A = S.arena, [x0, y0, x1, y1] = A.world; g.drawImage(img.arena, sx(x0), sy(y0), (x1 - x0) * sc, (y1 - y0) * sc);
+// highlights: valid defend hexes (blue zone), attack drop on path, one bad hex
+[[33, 4], [32, 3], [34, 5], [31, 6]].forEach((h) => atHex('hex.ok', h));
+Mp.PATH.slice(1, 8).forEach((h) => atHex('hex.attack', h));
+atHex('hex.bad', [12, 3]);
+// cores + defenders (sorted by row)
+atHex('coreEnemy', Mp.CORE[1]);
+atHex('hex.baseEnemy', [7, 2]); atHex('unit.sniper', [7, 2], 0, 0);
+atHex('hex.base', [30, 7]); atHex('unit.bulwark', [30, 7], 0, 210);
+atHex('hex.base', [36, 3]); atHex('unit.cannon', [36, 3], 0, 210);
+atHex('core', Mp.CORE[0]);
+atHex('unit.grunt', Mp.PATH[10], 1, 210); atHex('unit.minion', Mp.PATH[11], 2, 210); atHex('unit.grunt', Mp.PATH[17], 2, 0);
+
+// top HUD
+const sl = S['hud.bar'].slot, ml = [1 - sl[0] - sl[2], sl[1], sl[2], sl[3]];
+let r = put('hud.bar', 22, 12); fill(sub(r, sl), '#ff3d5e'); txt('Bot', r[0] + sl[0] * r[2], r[1] + r[3] * 0.32, 14, '#fff', 'left'); txt('100%', r[0] + r[2] - 10, r[1] + r[3] * 0.32, 13, '#ffd0d8', 'right');
+put('hud.avatar', 10, 6, { hue: 0 });
+r = put('hud.bar', W - 22 - 4.25 * HT, 12, { flip: true }); fill(sub(r, ml), '#2f9bff'); txt('You', r[0] + (ml[0] + ml[2]) * r[2], r[1] + r[3] * 0.32, 14, '#fff', 'right'); txt('100%', r[0] + 10, r[1] + r[3] * 0.32, 13, '#cfe8ff', 'left');
+put('hud.avatar', W - 10 - 1.5 * HT, 6, { hue: 210 });
+r = put('hud.timer', (W - 3.5 * HT) / 2, 2); const tr = sub(r, S['hud.timer'].text); txt('3:00', tr[0] + tr[2] / 2, tr[1] + tr[3] / 2, 26);
+
+// tray
+const Tr = S['hud.tray']; r = put('hud.tray', (W - Tr.w * HT) / 2, H - Tr.h * HT);
+const b = sub(r, Tr.bar), sw = b[2] / 10;
+for (let i = 0; i < 5; i++) put('hud.energySeg', b[0] + i * sw, b[1], { w: sw / HT, h: b[3] / HT });
+const lb = sub(r, Tr.label); txt('5 / 10', lb[0] + lb[2] / 2, lb[1] + lb[3] / 2, 15);
+const gx = r[0] + Tr.gem[0] * r[2], gy = r[1] + Tr.gem[1] * r[3]; put('ui.energy', gx - HT * 0.6, gy - HT * 0.6, { w: 1.2, h: 1.2 }); txt('5', gx, gy + 1, 18);
+const F = S['card.frame'];
+const card = (rect, key, hue, cost, name, kind) => {
+  const [x, y, w, h] = rect, win = sub(rect, F.window), p = frame(`card.${key}`, 0, hue);
+  g.save(); g.beginPath(); g.rect(...win); g.clip(); g.fillStyle = `hsl(${hue} 45% 18%)`; g.fillRect(...win); g.drawImage(p, win[0] - (win[3] * 1.15 - win[2]) / 2, win[1], win[3] * 1.15, win[3] * 1.15); g.restore();
+  g.drawImage(img['card.frame'], x, y, w, h);
+  const nm = sub(rect, F.name); txt(name, nm[0] + nm[2] / 2, nm[1] + nm[3] / 2, w / 6.2);
+  txt(String(cost), x + F.gem[0] * w, y + F.gem[1] * h, w / 5);
+  if (kind) { const bw = S[kind].w * w / 2; g.drawImage(img[kind], x + w - bw * 0.75, y - bw * 0.25, bw, bw); }
+};
+[['cannon', 200, 5, 'Cannon', 'ui.sword'], ['rapid', 320, 3, 'Rapid', 'ui.sword'], ['sniper', 40, 4, 'Sniper', 'ui.shield'], ['bulwark', 120, 5, 'Bulwark', 'ui.shield']].forEach(([k, hu, cst, n, kd], i) => card(sub(r, Tr.cards[i]), k, hu, cst, n, kd));
+const nx = sub(r, Tr.next); card(nx, 'grunt', 170, 2, 'Grunt'); txt('Next', nx[0] + nx[2] / 2, nx[1] - 11, 13);
+document.title = 'ready';
+</script>

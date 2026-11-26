@@ -1,0 +1,19 @@
+{
+  "name": "EggMerger",
+  "desc": "Drop monster eggs in the cursed nest, merge them up to an Elder that bursts out and pays from the Brood Pot. Overflow and the nest collapses.",
+  "engine": "html5",
+  "thumb": "thumb.webp",
+  "tags": [
+    "puzzle",
+    "merge",
+    "physics",
+    "pot",
+    "vrf"
+  ],
+  "entry": "index.html",
+  "settle": "moves",
+  "license": "MIT",
+  "source": "from-scratch (chomp-market) + matter.js (MIT)",
+  "soon": false,
+  "hero": "hero.webp"
+}

@@ -1,3 +1,4 @@
+import { BASE } from './nav.ts';
 import { randomDna, nameFor, type Skill } from './genes.ts';
 import { UNIT } from '@xyz/platform';
 import type { Attestation, Book, FillView, Limits, MatchView, OrderView, PositionView, TournamentView } from './chain.ts';
@@ -7,8 +8,8 @@ import { Market } from './market.ts';
 
 export const DEMO = new URLSearchParams(location.search).has('demo');
 export const DEMO_ACCOUNT = 'demo-player.testnet';
-export const DEMO_BALANCE = (25n * 10n ** 24n).toString(); // 25 coins
-const AMT = (n: number) => (BigInt(Math.round(n * 1000)) * 10n ** 21n).toString();
+export const DEMO_BALANCE = (25n * 10n ** 9n).toString(); // 25 SOL (lamports)
+const AMT = (n: number) => (BigInt(Math.round(n * 1000)) * 10n ** 6n).toString();
 const mon = (seed: number) => ({ name: nameFor(seed), dna: randomDna(seed), account: `${nameFor(seed).toLowerCase()}.testnet` });
 
 export const DEMO_ROOMS = [
@@ -74,7 +75,7 @@ const SKILL_TYPES: SkillType[] = ([
   ['Iron Fist', 'Power', 1, 'Common'], ['Quick Hands', 'Agility', 1, 'Common'], ['Thick Hide', 'Durability', 1, 'Common'], ['Swift Feet', 'Speed', 1, 'Common'],
   ['Titan Fist', 'Power', 2, 'Rare'], ['Gale Feet', 'Speed', 2, 'Rare'], ['Feather Step', 'AirJump', 1, 'Epic'], ['Vampire Fang', 'Lifesteal', 1, 'Rare'],
   ['Shadow Roll', 'QuickDodge', 1, 'Rare'], ['Second Wind', 'SecondWind', 1, 'Epic'],
-] as const).map(([name, kind, mag, rarity], i) => ({ id: i + 1, name, kind, mag, rarity, media: `/skills/${kind}.svg` }));
+] as const).map(([name, kind, mag, rarity], i) => ({ id: i + 1, name, kind, mag, rarity, media: `${BASE}/skills/${kind}.svg` }));
 const FREE: Record<number, number> = { 1: 3, 2: 1, 3: 2, 4: 1, 6: 1, 8: 1, 9: 1, 10: 1 };
 const loadout = (ids: number[]): Skill[] => ids.map((id) => SKILL_TYPES.find((t) => t.id === id)!).map(({ kind, mag }) => ({ kind, mag }));
 const OTHERS = [61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72].map((n) => fake(n, `${nameFor(n).toLowerCase()}.testnet`));
@@ -137,7 +138,7 @@ export const demoMonsters: MonstersApi = {
   }),
   config: () => wait({ owner: 'admin.testnet', arena: 'arena.testnet', treasury: AMT(3), breed_fee: AMT(0.1), market_fee_bps: 250, royalty_bps: 500, rent_fee_bps: 250 }),
 };
-const fmtN = (y: string) => Number(BigInt(y) / 10n ** 21n) / 1000;
+const fmtN = (y: string) => Number(BigInt(y) / 10n ** 6n) / 1000;
 
 const mm = (id: number, host: string, guest: string, mh: string, mg: string, status: MatchView['status'], tournament: number, winner: number | null = null): MatchView => ({
   ...match(id, status, 5000, 0), host, guest, stake: '0', winner, monsters: [mh, mg], tournament, started_ms: Date.now() - 2 * HOUR,

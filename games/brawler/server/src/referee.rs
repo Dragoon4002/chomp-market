@@ -1,5 +1,4 @@
 // Replays confirmed input tape w/ same sim as players -> winner, KOs, tape hash.
-// TODO(solana): sign/post the result on-chain (MagicBlock ER commit).
 use brawler_sim::{
     GameState, StageId,
     Stats,

@@ -1,0 +1,156 @@
+{
+ "feet": [
+  172,
+  356
+ ],
+ "hip": [
+  172,
+  250
+ ],
+ "height": 344,
+ "parts": [
+  {
+   "name": "cape",
+   "bone": "cape",
+   "parent": "torso",
+   "pivot": [
+    115,
+    145
+   ],
+   "at": [
+    12,
+    106
+   ]
+  },
+  {
+   "name": "backThigh",
+   "bone": "bt",
+   "parent": null,
+   "pivot": [
+    145,
+    252
+   ],
+   "at": [
+    105,
+    236
+   ]
+  },
+  {
+   "name": "backShin",
+   "bone": "bs",
+   "parent": "backThigh",
+   "pivot": [
+    142,
+    282
+   ],
+   "at": [
+    94,
+    280
+   ]
+  },
+  {
+   "name": "frontThigh",
+   "bone": "ft",
+   "parent": null,
+   "pivot": [
+    205,
+    252
+   ],
+   "at": [
+    165,
+    236
+   ]
+  },
+  {
+   "name": "frontShin",
+   "bone": "fs",
+   "parent": "frontThigh",
+   "pivot": [
+    215,
+    282
+   ],
+   "at": [
+    171,
+    278
+   ]
+  },
+  {
+   "name": "torso",
+   "bone": "t",
+   "parent": null,
+   "pivot": [
+    172,
+    250
+   ],
+   "at": [
+    79,
+    123
+   ]
+  },
+  {
+   "name": "backUpper",
+   "bone": "bu",
+   "parent": "torso",
+   "pivot": [
+    125,
+    152
+   ],
+   "at": [
+    85,
+    120
+   ]
+  },
+  {
+   "name": "backFore",
+   "bone": "bl",
+   "parent": "backUpper",
+   "pivot": [
+    112,
+    190
+   ],
+   "at": [
+    88,
+    188
+   ]
+  },
+  {
+   "name": "head",
+   "bone": "h",
+   "parent": "torso",
+   "pivot": [
+    185,
+    148
+   ],
+   "at": [
+    80,
+    12
+   ]
+  },
+  {
+   "name": "frontUpper",
+   "bone": "fu",
+   "parent": "torso",
+   "pivot": [
+    210,
+    155
+   ],
+   "at": [
+    198,
+    139
+   ]
+  },
+  {
+   "name": "frontFore",
+   "bone": "fl",
+   "parent": "frontUpper",
+   "pivot": [
+    218,
+    192
+   ],
+   "at": [
+    208,
+    116
+   ]
+  }
+ ]
+}

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { BASE } from '@/lib/nav.ts';
 import { archetype, STAT_KEYS, type Dna, type Monster, type Skill } from '@/lib/genes.ts';
 import { skillLabel } from '@/components/monsters/text.ts';
 import { idlePose, type Pose } from '@/lib/render/rig.ts';
@@ -9,7 +10,7 @@ import type { StageId } from '@/lib/stages.ts';
 
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-const ASSET_URL = process.env.NEXT_PUBLIC_ASSET_URL ?? '/ui';
+const ASSET_URL = process.env.NEXT_PUBLIC_ASSET_URL ?? `${BASE}/ui`;
 const ASSET_V = 2; // bump after re-uploading art (Blob files are cached for a year)
 export const asset = (name: string) => `${ASSET_URL}/${name}.webp?v=${ASSET_V}`;
 // CSS can't build url() from a variable, so expose the images theme.css uses as --img-<name>.
@@ -21,7 +22,7 @@ export function Logo({ className }: { className?: string }) {
 
 // Decorative sheet icon (sized by CSS, 1.3em by default), or a /public path. Text next to it carries the meaning.
 export function Ico({ n, className = 'ico' }: { n: string; className?: string }) {
-  return <img className={className} src={n.startsWith('/') ? n : asset(n)} alt="" aria-hidden="true" draggable={false} />;
+  return <img className={className} src={n.startsWith('/') ? BASE + n : asset(n)} alt="" aria-hidden="true" draggable={false} />;
 }
 
 export const SkillChip = ({ s }: { s: Skill }) => <span className="chip row-ico skill-chip"><Ico n={`/skills/${s.kind}.svg`} />{skillLabel(s)}</span>;
@@ -108,7 +109,7 @@ export function TitleArt({ className }: { className?: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const c = ref.current!, ctx = c.getContext('2d')!;
-    const imgs = TITLE.map((l) => { if (!l.z) return null; const i = new Image(); i.src = `/title/${l.n}.webp`; return i; });
+    const imgs = TITLE.map((l) => { if (!l.z) return null; const i = new Image(); i.src = `${BASE}/title/${l.n}.webp`; return i; });
     const aim = { x: 0, y: 0 }, cur = { x: 0, y: 0 };
     let raf = 0, last = -1e9;
     const draw = () => {

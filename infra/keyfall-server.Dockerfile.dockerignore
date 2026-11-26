@@ -8,5 +8,6 @@
 !games/ribbon/server/**
 !games/keyfall/server/**
 !games/coinflip/server/**
+!games/monster-siege/server/**
 !games/keyfall/client/public/words.txt
 **/target

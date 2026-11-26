@@ -1,0 +1,4 @@
+:HL["/g/brawler/assets/static/chunks/1tjdiuy5cq3g4.css","style"]
+:HL["https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@400;700;800&display=swap","style"]
+1:[["children",{"s":"__PAGE__","h":160}]]
+0:{"b":"irlxCjf2280ReYo_JYItM","t":{"t":{"s":"","h":80,"c":"$Q1"}}}

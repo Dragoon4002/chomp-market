@@ -34,7 +34,7 @@ export function Title({ page, children }: { page?: string; children?: React.Reac
         <div className="hub-counters">
           <span className="hub-count" title="Total wins"><Ico n="trophy" /><i>Wins</i>{wins}</span>
           <span className="hub-count" title="Total knockouts"><Ico n="ko" /><i>KOs</i>{kos}</span>
-          {signedAccountId && <button type="button" className="hub-count" onClick={() => setPop('funds')} title="Unified balance, deposit / withdraw"><Ico n="coin" /><i>Balance</i>{balance === null ? '…' : `${fmt(balance)} ${UNIT}`}</button>}
+          {signedAccountId && <button type="button" className="hub-count" onClick={() => setPop('funds')} title="Wallet balance (devnet SOL)"><Ico n="coin" /><i>Balance</i>{balance === null ? '…' : `${fmt(balance)} ${UNIT}`}</button>}
           <a className="hub-count wallet" href="/account"><Ico n="icon-wallet" />{signedAccountId ? short(signedAccountId) : 'Connect wallet'}</a>
           {DEMO && <a className="hub-count demo" href="/" target="_self">Demo mode · exit</a>}
         </div>

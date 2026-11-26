@@ -436,3 +436,125 @@ Refs: hosted crawl (scratchpad crawl/hosted), Fractal crawl, `market/inspiration
 - New: `/collections`, `/activity`, `/launchpad`, `/launch`, `/spin`; shared `lib/stats.ts` (volume/sales from price history), `lib/local.ts` (watchlist + cart), `components/presale-card.tsx`, `app/launchpad/drop-card.tsx`, `public/heroes/*.webp`.
 - Api additions: `machines()`, `drops()`, `spin()` (stub `TODO(solana)`: MagicBlock VRF). Units now lamports.
 - Gaps (need chain/indexer): buyer/seller in activity, per-monster sale history, tx explorer links on sales, offers/trait bids, cart as one tx (`TODO(solana)` in CartDrawer).
+
+## Tomb Delve landscape battle UI (2026-11-24)
+Ref: games/tomb-delve/reference/Egyptian Scarab Swarm Battle UI.png
+- [x] Art agent: landscape placeholder art in ref style → games/tomb-delve/src/public/art/{bg/*-l, ui/*, cards/l-*, cards/art/*, icons/{inventory,relic,deck,map}}.svg
+- [x] UI agent: all screens landscape 1672x941 scaled stage; battle layout per ref; banner + "Room n/10" only (no tracker, no levels); monster intent HIDDEN; popups Inventory/Relics/Deck/Map; heroes = brawler cutout rig (cutout.ts + rig.ts poses, PNG parts copied)
+- [x] sim.mjs still passes; tsc + build; headless playthrough + screenshots vs ref
+
+# Brawler Arena in the market (2026-11-24)
+Goal: brawler playable at /play/brawler, same origin as market, so one ngrok tunnel covers it (practice + online free rooms).
+Today: game.json url=localhost:3000 (separate dev server), WS = ws://<host>:8787 → both dead for remote users.
+
+## Client (games/brawler/client)
+- [x] Static export: move `src/app/[[...slug]]/page.tsx` → `src/app/page.tsx`; next.config `output:'export'`, `basePath:'/g/brawler'`, `images.unoptimized`, drop headers/rewrites; export script copies out → ../build, `_next`→`assets` (reuse tomb-delve export.mjs)
+- [x] Router: hash routing in `lib/nav.ts` (`#/practice`), only seam. App click interceptor keeps `href="/..."` links working unchanged. Works in sandboxed iframe (no pushState) + deep links survive reload
+- [x] Assets: one `BASE` const prefix for `/stages /chars /skills /title /ui` (~10 call sites)
+- [x] WS default `session.ts:48` → `${ws|wss}://${location.host}/brawler-ws` (`?server=` + NEXT_PUBLIC_SERVER_URL overrides kept)
+- [x] SDK: `<script src="/chomp-sdk.js">` + `Chomp.ready()`, `Chomp.result()` on match over
+- [x] MARKET_URL default → `/`
+
+## Market
+- [x] `next.config.ts` rewrite `/brawler-ws/:path*` → `http://127.0.0.1:8787/:path*` (Next proxies WS upgrade; verify in `next start`)
+- [x] `games/brawler/game.json`: drop `url`, add `entry: index.html`
+- [x] `BRAWLER_URL` default → `/play/brawler`
+
+## Verify
+- [x] brawler tsc + tests; market tsc + build
+- [x] `cargo run -p brawler-server --release` + market prod: /play/brawler practice fight renders (headless screenshot), online room create/join over /brawler-ws (2 headless tabs or ws smoke)
+- [x] same through ngrok URL
+
+## Review (brawler)
+- WS path is `/g/brawler-ws` (sibling of basePath), proxied by market `next.config.ts` rewrite (prod `next start` proxies the upgrade) and by `scripts/serve-games.ts` (dev :3200). Brawler's own `next dev` (:3000/g/brawler/) has the same rewrite.
+- Build: `cd games/brawler/client && npm run build` → `games/brawler/build` (EXPORT=1; Docker standalone path unchanged).
+- Verified: tsc, 41 tests, practice fight renders, market gets `ready`, `wss://<ngrok>/g/brawler-ws` host+join room, /history via tunnel.
+- Not done: `build/` not committed; sandbox has no storage so collection resets per load; staked/NFT still `TODO(solana)`.
+
+# UI polish pass: every game + market to brawler quality (2026-11-24)
+Audit shots: scratchpad/audit/<game>/. Bar = brawler: full-bleed art, logo, icon tiles, chunky gradient CTAs w/ icons, HUD chips, every screen styled, results/lobby/modals real screens. Own art style per game (refs in games/<slug>/references).
+Execution: 1 agent per game + 1 market, disjoint files, each verifies w/ headless shots 1440x900 + 390x844 + game smoke test.
+
+## monster-siege (build/index.html, render.js)
+- [ ] Menu/deck builder: arena bg, logo, monster tiles in card.frame w/ cost gem + archetype icon + stat bars, 8-slot deck tray, fixed CTA bar
+- [ ] Gradient CTAs w/ icons; Easy/Hard segmented toggle
+- [ ] Result modal: crest, core %, kills, score, Rematch/Menu (drop 3s auto-return)
+- [ ] Host lobby: big room code + copy, 2 player slots, cancel; styled error toasts
+- [ ] Countdown: big animated number, no black strip
+- [ ] Pause chip + Resume/Forfeit modal
+- [ ] Portrait "rotate" screen; battle layout: fill bottom gap, AI chip overlap, style fullscreen btn
+
+## tomb-delve (src/app/page.tsx, globals.css, art-gen2.py)
+- [ ] Fill viewport (no letterbox); portrait rotate overlay
+- [ ] Title: logo plate, tagline scroll, CTA text fit, HUD chips
+- [ ] Pick: framed hero cards, stat chips, lock overlay
+- [ ] Corridor: walking hero + plate + room pips
+- [ ] Battle: pips, Lv/HP labels, enemy intent chip, log as toast
+- [ ] Camp: hero position, carried relics as icon chips
+- [ ] Pawn: styled scanbox, NPC speech bubble, SOL chip
+- [ ] End: framed result modal (relics + SOL / death)
+- [ ] Deck/Map modals: mini card frames, pips; demo panel → themed corner gear
+
+## pet-den (build/index.html, ui.js)
+- [ ] #sheet → centred modal, blurred backdrop, painted header (fixes all 9 tabs)
+- [ ] Leaderboard podium; Breeding parent♥parent→egg; City/Shop/Quests/Achievements card grids w/ locks + reward chips
+- [ ] Mini games: arena bg, HUD chip, result card
+- [ ] Bell log dropdown; evolve full-screen flash; habitat thumbs; mobile nav scroll
+
+## sealed-house (build/index.html, game.js)
+- [ ] Final result hero card + collection grid + Play again
+- [ ] Reveal: fix compact title overlap, tier burst, bigger item art
+- [ ] My Bids/History/Leaderboard: row cards, podium, art empty states
+- [ ] Full-bleed stage bg, fill dead space; timer slot shows lot result after lock
+
+## 2048 (build/style, index.html)
+- [ ] Reskin to Chomp theme: header, score chips, tile palette, game-over/win modal w/ CTAs
+
+## market (components/ui.tsx, app/*)
+- [ ] Btn → chunky gradient CTA w/ icon (global)
+- [ ] Home: hero slides only w/ real hero art; show all games (drop slice(0,8)); Market Highlights art-first cards
+- [ ] /play poster + loading/error state
+- [ ] /collections stacked rows <sm + banner; /search empty-skill cards; /collection banners + grid fill
+- [ ] /item rarity glow, hide "List yours" at 0; /me profile banner + HUD stats; /activity monster names; /economy x-axis; /create layout
+- [ ] Nav strips: edge fade
+
+## Art (needs decision)
+- [ ] Painted thumb+hero for 2048, monster-siege (key art), pet-den, sealed-house; regen tomb-delve hero; logos for siege/tomb; victory/defeat crests
+
+# Devnet: chomp program + wallets/faucet + every game on devnet (spec: tasks/devnet-spec.md)
+- [x] A chomp program (match escrow/settle/cancel, score) + tests + setup/deploy scripts
+- [x] B platform pkg (burner + Privy + iframe bridge, chomp helpers) + market (connect UI, /api/faucet, portal bridge, auto submit_score)
+- [x] C crates/chain (RPC read, referee settle, ed25519 auth) + brawler/keyfall/coinflip/ribbon servers
+- [x] D brawler/keyfall/coinflip/ribbon clients: stake = open/join match, seat auth via signBytes
+- [x] E pet-den program + chain.js on devnet
+- [x] F sealed-house program + chain.js on devnet (VRF)
+- [x] G tomb-delve / monster-siege / 2048 via portal score
+- [x] Deploy all 3 programs (needs user SOL top-up), init + register games, fund faucet/referees
+- [x] Review each impl + smoke on devnet
+
+## Review (devnet, 2026-11-25)
+- Live devnet: chomp 4m5U9N… (upgraded: join resets expiry, overflow checks), pet-den 2shkiB…, sealed-house FGYiyd… (VRF callback CU fix 1.18M→7k, bid bond ≥ reserve, window caps, lot-bound commit).
+- Real round trips: chomp open/join/settle/cancel/score; coinflip staked match via server referee; brawler settle w/ confirm; pet-den create→care→evolve→release; sealed-house VRF lot→bid→settle→sell_back; 2048 submit_score via portal bridge; faucet drip + rate limit.
+- Portal bridge: program allowlist = 3 programs, chomp ixs bound to slug, stake confirm(), sign prefix per slug, /g CSP sandbox (no burner theft).
+- Open: sealed-house lot contents public → sell_back drain (user decision pending); submit_score unverified; deployer can swap referee; no fee withdraw; Privy untested (needs NEXT_PUBLIC_PRIVY_APP_ID); brawler/keyfall/ribbon not played e2e vs live server; finished-id set in-memory.
+
+# Portal: keyfall/ribbon/coinflip into marketplace + live devnet e2e (2026-11-25)
+- [x] generic /g/<slug>-ws proxy (market next.config + serve-games); coinflip server → 8791 (siege owns 8790); game.json un-soon
+- [x] keyfall static export at /g/keyfall + staked e2e
+- [x] ribbon static export at /g/ribbon + staked e2e
+- [x] coinflip static export at /g/coinflip + staked e2e
+- [x] brawler staked e2e live server + score games in portal
+- [x] root fixes after e2e: portal sandbox + /g CSP allow-forms; crates/chain RPC error ≠ "match not found" + JSON "Too many requests" retry; platform balanceOf via wallet (no fake 0); platform `myMatches` (chain scan) feeds reclaim lists in brawler/keyfall/coinflip (sandbox has no localStorage); coinflip default stake 0.01
+## Review (portal e2e)
+- All 9 games 200 on /play + /g on :3150; /play lists all with Play Now.
+- Devnet staked e2e through real portal UI (2 burners each): brawler (KO), keyfall, ribbon, coinflip — referee settle confirmed, balances = stake·2·0.975. Host cancel refunds; reclaim works.
+- Score games: monster-siege, tomb-delve submit_score on chain; pet-den create_pet; sealed-house lot+bid+settle.
+- Open: public devnet RPC 429s (use dedicated RPC); coinflip art still NEAR "N"; portal doesn't forward ?room= to iframe; 390px iframe tiny (fullscreen); pet-den/sealed-house sigs not in portal footer; monster-siege no tapeHash; keyfall no Chomp.result score.
+
+# Submission prep (2026-11-25)
+- [x] polish: portal footer shows last bridge tx sig; Privy hidden (PRIVY_APP_ID=""); monster-siege tapeHash; keyfall Chomp.result; brawler reclaim msg
+- [x] README + handoff rewritten
+- [x] branches: devnet-platform + 9 game branches (brawler, keyfall, coinflip, ribbon, 2048, monster-seige, pet-den, sealed-house, tomb-delve); staging = octopus merge, pushed. main untouched
+- [x] Vercel project chomp-market-sol (rootDirectory=market, prebuilt deploy): https://chomp-market-sol.vercel.app (old alias chomp-market-one.vercel.app) — games static in public/g, FAUCET_SECRET env, live faucet drip ok
+- [ ] host game servers (brawler/keyfall/ribbon/coinflip/monster-siege) + set <SLUG>_SERVER on Vercel, redeploy
+- [ ] dedicated devnet RPC

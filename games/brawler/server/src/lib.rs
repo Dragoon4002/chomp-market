@@ -2,17 +2,16 @@
 //! - Pairs 2 players by room code, forwards netplay/signaling (players also go P2P).
 //! - Public rooms listed in lobby; spectators get confirmed input tape.
 //! - Players mirror confirmed inputs here; referee replays, computes winner + tape hash. 30 s silent = forfeit.
-//! - TODO(solana): post the referee result on-chain (was settle/report_result; see crates/chain).
+//! - Staked rooms (matchId = chomp Match PDA id): referee posts `settle(id, winner)` on finish (crates/chain).
 //!
 //! Protocol: server sends {t:'hello', nonce} (32 B base64). Client first msg one of
-//!   {t:'host', name, dna, stage, pub, view, bettable, matchId|null, stake, account, auth?}
-//!   {t:'join', code, name, dna, stage, account, auth?}
-//!   {t:'match', matchId, account, name, dna, stage, auth}   on-chain match w/o pre-made room
+//!   {t:'host', name, dna, stage, pub, view, bettable, matchId|null, stake, account, sig?}
+//!   {t:'join', code, name, dna, stage, account, sig?}
+//!   {t:'match', matchId, account, name, dna, stage, pub?, sig}   on-chain match w/o pre-made room
 //!   or {t:'watch', code} / {t:'lobby'} / {t:'peek', code}.
-//! On-chain seats need auth = {publicKey, signature} over `brawler-arena:<matchId>` + hello nonce (chain::verify_auth).
-//!   Skipped when no contract is configured (current default: chain seam is a stub).
-//! On-chain match must have game == "brawler". Seats in start/spec/resume = {name, dna, skills, account}; skills come
-//!   from get_monster on chain seats only ([] otherwise).
+//! On-chain seats need sig = base58 ed25519 over utf8 `chomp:brawler:<matchId>:<hello.nonce>` by `account`
+//!   (chain::verify_sig). host: account = match.a; join: account = match.b (joined on-chain); match: a or b, both filled.
+//!   Chain rooms take stake from the Match PDA. Seats in start/spec/resume = {name, dna, skills, account}; skills = [].
 //! Room lobby (host/join): `host` -> {t:'room', code}; `join` -> {t:'room', code, seat:1}. Nothing starts until the host
 //!   sends {t:'begin'} (seat 0, waiting, both seats connected). While waiting: {t:'set', name?, dna?, stage?}
 //!   (stage host only). {t:'chat', text} from seats/spectators (<=200 chars, 1 per 500 ms) -> {t:'chat', from, seat, text, ts}
@@ -28,7 +27,7 @@
 //! Reconnect: {t:'rejoin', code, account, auth?} (live room, that account's seat, opponent still there) re-seats the
 //!   socket; opponent gets {t:'rejoin'}, flushes its tape, answers {t:'resync'}; rejoiner gets
 //!   {t:'resume', code, seat, stage, matchId, bettable, players, frames} (frames = survivor's confirmed tape), relay only.
-//! Paid guest leaves a waiting on-chain room -> TODO(solana): refund via chain (was `unjoin`).
+//! Paid guest leaves a waiting on-chain room -> seat freed; only that account (match.b) can re-join it.
 //! HTTP: GET /history/{account}, GET /tape/{key} (stage, players+dna+skills, frames, winner, reason, tape_hash; see referee).
 
 mod game;
@@ -39,11 +38,9 @@ mod room;
 mod session;
 
 use axum::Router;
-use brawler_sim::genes::{Dna, Skill, sanitize, sanitize_skills};
-use chain::Chain;
+use chain::{Chain, MatchInfo};
 use room::Shared;
-use serde::Deserialize;
-use serde_json::{Value, json};
+use std::collections::HashSet;
 use std::sync::{
     Arc, Mutex, MutexGuard,
     atomic::AtomicU64,
@@ -56,35 +53,23 @@ pub struct App {
     shared: Mutex<Shared>,
     pub history: history::History,
     chain: Arc<Chain>,
-    /// Monsters NFT contract; empty = no on-chain DNA lookups.
-    monsters: String,
+    /// Match ids already played here: never reseated, so a dropped settle can't be replayed.
+    // ponytail: in memory, lost on restart; a settled match's closed account still rejects it
+    finished: Mutex<HashSet<u64>>,
     conn_ids: AtomicU64,
 }
 
-#[derive(Deserialize)]
-struct ChainMatch {
-    status: String,
-    host: String,
-    guest: Option<String>,
-    stake: String,
-    bettable: bool,
-    #[serde(default)]
-    monsters: Option<Vec<Option<String>>>,
-    #[serde(default)]
-    game: String,
-}
-
 impl App {
-    pub fn new(chain: Arc<Chain>, monsters: String) -> Arc<Self> {
-        Self::with_history(chain, monsters, String::new())
+    pub fn new(chain: Arc<Chain>) -> Arc<Self> {
+        Self::with_history(chain, String::new())
     }
 
-    pub fn with_history(chain: Arc<Chain>, monsters: String, history_file: String) -> Arc<Self> {
+    pub fn with_history(chain: Arc<Chain>, history_file: String) -> Arc<Self> {
         Arc::new(App {
             shared: Mutex::default(),
             history: history::History::load(history_file),
             chain,
-            monsters,
+            finished: Mutex::default(),
             conn_ids: AtomicU64::new(1),
         })
     }
@@ -94,21 +79,18 @@ impl App {
     }
 
     fn on_chain(&self) -> bool {
-        !self.chain.contract.is_empty()
+        self.chain.enabled()
     }
 
-    async fn get_match(&self, id: u64) -> Option<ChainMatch> {
-        self.chain
-            .view(&self.chain.contract, "get_match", json!({ "match_id": id }))
-            .await
+    fn finished(&self, id: u64) -> bool {
+        self.finished.lock().unwrap().contains(&id)
     }
 
-    async fn monster_load(&self, token: &str) -> Option<(Dna, Vec<Skill>)> {
-        let m: Value = self
-            .chain
-            .view(&self.monsters, "get_monster", json!({ "token_id": token }))
-            .await?;
-        (!m["dna"].is_null()).then(|| (sanitize(&m["dna"]), sanitize_skills(&m["skills"])))
+    async fn get_match(&self, id: u64) -> Option<MatchInfo> {
+        if !self.on_chain() || self.finished(id) {
+            return None;
+        }
+        self.chain.match_info(id).await
     }
 }
 

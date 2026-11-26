@@ -8,7 +8,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
-        <link rel="preload" href="/fonts/OpenDyslexic-BoldItalic.otf" as="font" type="font/otf" crossOrigin="" />
+        {/* Chomp portal bridge, served by the market. Sync (tiny) so window.Chomp exists before the app mounts */}
+        <script src="/chomp-sdk.js" />
+        <link rel="preload" href="/g/keyfall/fonts/OpenDyslexic-BoldItalic.otf" as="font" type="font/otf" crossOrigin="" />
       </head>
       <body>
         <noscript>Keyfall needs JavaScript to run.</noscript>

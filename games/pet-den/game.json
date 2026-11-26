@@ -1,0 +1,12 @@
+{
+  "name": "Pet Den",
+  "desc": "Raise a roster of monsters on Solana. Care, train, breed, send them to work in the City, and evolve them into pricier NFTs.",
+  "engine": "html5",
+  "thumb": "thumb.png",
+  "tags": ["pet", "casual", "collect", "private"],
+  "entry": "index.html",
+  "settle": "result",
+  "license": "MIT",
+  "source": "original",
+  "soon": false
+}

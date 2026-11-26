@@ -1,6 +1,7 @@
 // Painted stage art: screen-space backdrop + world-space platform image. Source art: assets/stages/<id> -> public/stages/<id>
 // (black bg keyed by sprites/stages/key.py; walkable surfaces measured with sprites/stages/surf.py and written into stages.ts).
 import { STAGES, type StageId } from '../stages.ts';
+import { BASE } from '../nav.ts';
 
 // s = world units per image px; `at` pins image point (px, py) to world point (wx, wy). Must agree with stages.ts geometry.
 const ART: Record<StageId, { s: number; at: [px: number, py: number, wx: number, wy: number]; bg: boolean }> = {
@@ -11,7 +12,7 @@ const ART: Record<StageId, { s: number; at: [px: number, py: number, wx: number,
 
 const imgs = new Map<string, HTMLImageElement | false | null>(); // null: loading, false: failed
 function img(src: string) {
-  if (!imgs.has(src)) { imgs.set(src, null); const i = new Image(); i.src = src; i.decode().then(() => imgs.set(src, i), () => imgs.set(src, false)); }
+  if (!imgs.has(src)) { imgs.set(src, null); const i = new Image(); i.src = BASE + src; i.decode().then(() => imgs.set(src, i), () => imgs.set(src, false)); }
   return imgs.get(src) || null;
 }
 const srcs = (id: StageId) => [...(ART[id].bg ? ['bg'] : []), 'fg', 'top'].map((n) => `/stages/${id}/${n}.webp`);

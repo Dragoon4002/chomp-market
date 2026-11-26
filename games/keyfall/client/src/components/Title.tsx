@@ -1,7 +1,9 @@
-import { useState } from 'react';
-import { fmt, toYocto } from '@xyz/platform';
+import { useEffect, useState } from 'react';
+import { fmt, readMatch, toLamports } from '@xyz/platform';
 import { peek } from '@/lib/match.ts';
+import { BASE } from '@/lib/game.ts';
 import { DEMO, useKeyfall } from '@/lib/chain.ts';
+import type { Reclaim } from '@/lib/stakes.ts';
 import type { Screen } from '@/components/App.tsx';
 import { Backdrop } from '@/components/scene.tsx';
 import { MuteButton } from '@/components/Match.tsx';
@@ -32,7 +34,7 @@ export function Title({ go }: { go: (s: Screen) => void }) {
   const hostFree = () => { click(); go({ k: 'online', req: { kind: 'host', name: nick, account, sign: k.sign } }); };
   const hostStaked = () => run('Host staked', async () => {
     if (!k.account) throw new Error('connect wallet first');
-    const y = toYocto(stake);
+    const y = toLamports(stake);
     const matchId = await k.createMatch(y);
     go({ k: 'online', req: { kind: 'host', name: nick, matchId, account, sign: k.sign }, stake: y });
   });
@@ -41,9 +43,11 @@ export function Title({ go }: { go: (s: Screen) => void }) {
     if (!c) throw new Error('enter a room code');
     const p = await peek(c);
     if (p.full) throw new Error('room is full');
-    if (p.matchId != null && p.stake !== '0') {
+    if (p.matchId != null) { // any chain match (even stake 0) needs joinMatch or the server rejects the seat
       if (!k.account) throw new Error(`staked room (${fmt(p.stake)} SOL) — connect wallet first`);
-      setConfirm({ code: c, matchId: p.matchId, stake: p.stake, host: p.host });
+      const m = DEMO ? { b: null, stake: p.stake } : await readMatch('keyfall', p.matchId); // chain is the source of truth for the stake
+      if (!m || m.b) throw new Error('staked seat already taken or match closed');
+      setConfirm({ code: c, matchId: p.matchId, stake: String(m.stake), host: p.host });
       return;
     }
     go({ k: 'online', req: { kind: 'join', name: nick, code: c, matchId: p.matchId ?? undefined, account, sign: k.sign } });
@@ -61,7 +65,8 @@ export function Title({ go }: { go: (s: Screen) => void }) {
         {DEMO && <span className="tag">demo</span>}
         <div className="wallet">
           {k.account ? (
-            <><span className="acct" title={k.account}>{k.account}</span><span className="bal">{k.balance == null ? '—' : fmt(k.balance)} SOL</span></>
+            <><span className="acct" title={k.account}>{k.account.slice(0, 4)}…{k.account.slice(-4)}</span><span className="bal">{k.balance == null ? '—' : fmt(k.balance)} SOL</span>
+              {k.kind === 'burner' && <button className="btn sm" disabled={!!busy} onClick={() => run('Faucet', k.faucet)}>{busy === 'Faucet' ? '…' : 'Get devnet SOL'}</button>}</>
           ) : (
             <button className="btn sm" onClick={() => { click(); void k.signIn(); }}>Connect wallet</button>
           )}
@@ -70,7 +75,7 @@ export function Title({ go }: { go: (s: Screen) => void }) {
       </header>
 
       <div className="col">
-        <h1 className="logo"><img src="/art/logo.png" alt="Keyfall" width={1000} height={164} /></h1>
+        <h1 className="logo"><img src={`${BASE}/art/logo.png`} alt="Keyfall" width={1000} height={164} /></h1>
         <p className="sub">Defend your city. Out-type your rival.</p>
 
         <button className="btn big" onClick={practice}>Practice</button>
@@ -99,6 +104,7 @@ export function Title({ go }: { go: (s: Screen) => void }) {
           </div>
         )}
         {err && <p className="err" role="alert">{err}</p>}
+        {!DEMO && k.account && <ReclaimList />}
 
         <button className="btn wide" onClick={() => { click(); setHelp(true); }}>How to play</button>
       </div>
@@ -115,5 +121,34 @@ export function Title({ go }: { go: (s: Screen) => void }) {
         </div>
       )}
     </main>
+  );
+}
+
+// Stakes still escrowed in matches this browser opened/joined: host can cancel an open seat; a filled seat refunds both after 2 h.
+function ReclaimList() {
+  const k = useKeyfall();
+  const [rows, setRows] = useState<Reclaim[]>([]);
+  const [msg, setMsg] = useState('');
+  const load = () => { k.reclaims().then(setRows, () => {}); };
+  useEffect(load, [k.account]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!rows.length) return null;
+  const now = Date.now() / 1000;
+  const go = async (r: Reclaim) => {
+    click(); setMsg('Confirm in your wallet…');
+    try { await k.reclaim(r); setMsg('Stake refunded.'); load(); } catch (e) { setMsg(`Reclaim: ${errMsg(e)}`); }
+  };
+  return (
+    <div className="confirm" aria-label="Reclaim stake">
+      <p><b>Reclaim stake</b></p>
+      {rows.map((r) => (
+        <div className="field-row" key={r.id}>
+          <span>{fmt(String(r.m.stake))} SOL · {r.m.b ? 'rival joined' : 'seat open'}</span>
+          {now > r.at
+            ? <button className="btn sm" onClick={() => go(r)}>Reclaim</button>
+            : <small>refund opens {new Date(r.at * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small>}
+        </div>
+      ))}
+      {msg && <p className="err" role="status">{msg}</p>}
+    </div>
   );
 }

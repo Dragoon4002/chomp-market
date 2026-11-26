@@ -10,3 +10,6 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time",
 serde_json = "1"
 rand = "0.9"
 sha2 = "0.10"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["io-util"] } # tests/http.rs raw TcpStream read/write

@@ -1,4 +1,6 @@
 // SFXManager + MusicManager port (reference §7): sliders default 1 x max 0.5, per-play pitch U(.95,1.05), volume U(.9,1).
+import { BASE } from '@/lib/game.ts';
+
 const CLIPS = ['typewriter_press', 'laser_fire', 'explosion', 'bomb_fall', 'chopper_fire', 'city_attacked_siren', 'error_short', 'error_three_strikes'] as const;
 export type Clip = (typeof CLIPS)[number];
 
@@ -11,7 +13,7 @@ let sirenUntil = 0;
 // Must run inside a user gesture (autoplay policy).
 export function unlock() {
   if (!music) {
-    music = new Audio('/sfx/music.ogg');
+    music = new Audio(`${BASE}/sfx/music.ogg`);
     music.loop = true;
     music.volume = 0.5;
   }
@@ -21,7 +23,7 @@ export function unlock() {
   out = ac.createGain();
   out.gain.value = muted ? 0 : 0.5;
   out.connect(ac.destination);
-  for (const c of CLIPS) fetch(`/sfx/${c}.ogg`).then((r) => r.arrayBuffer()).then((b) => ac!.decodeAudioData(b)).then((b) => { bufs[c] = b; }, () => {});
+  for (const c of CLIPS) fetch(`${BASE}/sfx/${c}.ogg`).then((r) => r.arrayBuffer()).then((b) => ac!.decodeAudioData(b)).then((b) => { bufs[c] = b; }, () => {});
 }
 
 export function play(c: Clip, vol = 1, pitch = 1) {
