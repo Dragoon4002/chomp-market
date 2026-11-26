@@ -96,7 +96,7 @@ const GRUNT = [600, 70, 100, 1200, 1000];
 export const HZ = 30;
 export const MATCH_T = 180 * HZ, OT_T = 60 * HZ, DOUBLE_T = MATCH_T - 60 * HZ;
 export const CORE_HP = 3000, PAD_HP = 1200, E_MAX = 600; // energy in 1/60ths (1 per tick = +1 per 2 s)
-export const APPLY_DELAY = 6; // live: plays apply at server tick + 6
+export const APPLY_DELAY = 1; // live: plays apply at server tick + 1 (server/src/lib.rs)
 const R_UNIT = 300, R_DEF = 600, R_CORE = 1000, SPLASH = 1000, HOP = 3000, SPAWN_D = 1500;
 const FX = { AirJump: 1, Lifesteal: 2, QuickDodge: 4, SecondWind: 8 };
 const coreXY = (seat) => center(...CORE[seat]);

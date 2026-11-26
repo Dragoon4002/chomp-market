@@ -1,6 +1,7 @@
 //! Monster Siege ws relay: lockstep, does NOT run the sim. Room/session pattern from games/keyfall/server.
-//! Server owns the clock (30 Hz). A card play is stamped apply_tick = tick + 6 and broadcast to both seats;
-//! `{t:'beat', tick}` every 3 ticks; clients only simulate ticks < latest beat. Protocol: README.md.
+//! Server owns the clock (30 Hz). A card play is stamped apply_tick = tick + APPLY_DELAY and broadcast to both seats;
+//! `{t:'beat', tick}` every 3 ticks; clients only simulate ticks < latest beat. Clients ack their sim tick; the clock
+//! pauses while a seat trails it by > PAUSE_LAG (or is disconnected), and a seat stalled for GRACE_TICKS forfeits. Protocol: README.md.
 use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::response::Response;
@@ -14,10 +15,12 @@ use tokio::sync::mpsc;
 const MAX_MSG: usize = 8 * 1024; // deck of 8 monsters fits
 const RATE: u32 = 20; // msgs/s per socket
 const PLAY_RATE: u32 = 4; // card plays/s per socket (energy caps real play far below this)
-pub const APPLY_DELAY: u64 = 6;
+pub const APPLY_DELAY: u64 = 1; // a play is sent before any beat > its tick, so +1 is already safe; more = input lag
 const BEAT_EVERY: u64 = 3;
 const COUNT_TICKS: u32 = 90; // 3 s
-const GRACE_TICKS: u32 = 450; // 15 s
+const GRACE_TICKS: u32 = 600; // 20 s stalled (lagging or gone) = forfeit
+const PAUSE_LAG: u64 = 45; // seat's acked sim tick trails the clock by 1.5 s (~RTT + buffer; 500 ms RTT ≈ 25) → pause
+const RESUME_LAG: u64 = 15; // every seat back within 0.5 s → resume
 const END_TICKS: u64 = 7200 + 150; // 3:00 + 60 s OT (+5 s slack): sim has ended by then
 
 type Tx = mpsc::UnboundedSender<Message>;
@@ -39,6 +42,8 @@ struct Room {
     tokens: [String; 2],
     conns: [Option<(u64, Tx)>; 2],
     gone: [u32; 2],
+    acked: [u64; 2],
+    paused: bool,
     phase: Phase,
     tick: u64,
     loadouts: [Value; 2],
@@ -61,15 +66,34 @@ impl Room {
         if self.phase == Phase::Wait {
             return false;
         }
-        for i in 0..2 {
-            self.gone[i] = if self.conns[i].is_some() { 0 } else { self.gone[i] + 1 };
-        }
         if self.conns.iter().all(Option::is_none) {
             return true;
         }
-        if let Some(i) = (0..2).find(|&i| self.gone[i] >= GRACE_TICKS) {
-            self.all(&json!({ "t": "forfeit", "winner": 1 - i }));
+        let live = self.phase == Phase::Live;
+        let lag: [u64; 2] = std::array::from_fn(|i| match &self.conns[i] {
+            None => u64::MAX,
+            Some(_) if live => self.tick - self.acked[i],
+            Some(_) => 0,
+        });
+        if self.paused && lag.iter().all(|&l| l <= RESUME_LAG) {
+            self.paused = false;
+            self.all(&json!({ "t": "pause", "on": false }));
+        } else if !self.paused && let Some(i) = (0..2).find(|&i| lag[i] > PAUSE_LAG) {
+            self.paused = true;
+            self.all(&json!({ "t": "pause", "on": true, "seat": i, "secs": GRACE_TICKS / 30 }));
+        }
+        // ponytail: per-episode stall budget (resets on recovery); cumulative budget if players abuse pauses
+        for (g, &l) in self.gone.iter_mut().zip(&lag) {
+            *g = if self.paused && l > RESUME_LAG { *g + 1 } else { 0 };
+        }
+        let out: Vec<usize> = (0..2).filter(|&i| self.gone[i] >= GRACE_TICKS).collect();
+        if !out.is_empty() {
+            let winner = if out.len() == 2 { Value::Null } else { json!(1 - out[0]) }; // both stalled: draw
+            self.all(&json!({ "t": "forfeit", "winner": winner }));
             return true;
+        }
+        if self.paused {
+            return false;
         }
         match self.phase {
             Phase::Count(n) if n > 1 => self.phase = Phase::Count(n - 1),
@@ -249,6 +273,8 @@ impl Session {
                     tokens: [token(), token()],
                     conns: [Some((self.id, self.tx.clone())), None],
                     gone: [0; 2],
+                    acked: [0; 2],
+                    paused: false,
                     phase: Phase::Wait,
                     tick: 0,
                     loadouts: [loadout_of(&m["loadout"]), Value::Null],
@@ -310,6 +336,15 @@ impl Session {
                 let p = json!({ "t": "play", "seat": seat, "card": card, "x2": x2, "y": y, "apply_tick": r.tick + APPLY_DELAY });
                 r.all(&p);
                 r.plays.push(p);
+                Ok(())
+            }
+            "ack" => {
+                if let Some((code, seat)) = &self.at
+                    && let Some(t) = m["tick"].as_u64()
+                    && let Some(r) = self.app.rooms.lock().unwrap().get_mut(code)
+                {
+                    r.acked[*seat] = r.acked[*seat].max(t.min(r.tick)); // clamp: lag = tick - acked never underflows
+                }
                 Ok(())
             }
             "over" => {

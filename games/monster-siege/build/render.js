@@ -147,7 +147,7 @@ function hexOver(ctx, L, flip, h, k, col) {
   return [x, y];
 }
 
-// ui: {seat, sel, drag:{x,y,moved}|null, ms, banner, names, ai, showRange}
+// ui: {seat, sel, drag:{x,y,moved}|null, ms, banner, names, ai, showRange, sent:{ci,h,kind,at}|null}
 // ctx arrives pre-scaled to CSS px (caller owns the DPR transform).
 export function render(ctx, cw, ch, s, ui) {
   const L = layout(cw, ch, ui.sa), { T } = L, flip = ui.seat === 1, P = (x, y) => toScreen(L, flip, x, y);
@@ -168,6 +168,8 @@ export function render(ctx, cw, ch, s, ui) {
     const kd = dropOf(s, ui.seat, s.P[ui.seat].hand[ui.sel], ...h);
     if (kd) hexOver(ctx, L, flip, h, kd === 'attack' ? 'hex.attack' : 'hex.ok', kd === 'attack' ? '#ffb02e66' : '#4dff9a55');
   }
+  const sent = ui.sent && ui.ms - ui.sent.at < 1500 && s.P[ui.seat].hand.includes(ui.sent.ci) ? ui.sent : null; // live: play in flight
+  if (sent) { ctx.globalAlpha = 0.5 + 0.3 * Math.sin(ui.ms / 80); hexOver(ctx, L, flip, sent.h, sent.kind === 'attack' ? 'hex.attack' : 'hex.ok', '#ffffff88'); ctx.globalAlpha = 1; }
   if (hov?.h) hexOver(ctx, L, flip, hov.h, hov.kind ? (hov.kind === 'attack' ? 'hex.attack' : 'hex.ok') : 'hex.bad', hov.kind ? '#ffffff55' : '#ff304099');
 
   for (let seat = 0; seat < 2; seat++) {

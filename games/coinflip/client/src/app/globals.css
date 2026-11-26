@@ -1,6 +1,6 @@
 /* Coinflip: neon arena. deep violet, magenta glow, minted gold, green for wins. */
 :root {
-  --bg: #180138;
+  --bg: #230437;
   --card: #1e1147;
   --card-2: #2a1760;
   --line: #3f2690;
@@ -20,8 +20,8 @@ html { background: var(--bg); color-scheme: dark; }
 html, body { margin: 0; overflow-x: clip; }
 body {
   min-height: 100dvh; color: var(--text); font: 15px/1.5 var(--display);
-  /* title.png = page bg with title art in its top ~28%; min 900px wide so phones crop sides, not shrink art. #180138 = art's bottom edge */
-  background: url(../../public/title.png) top center / max(100%, 900px) auto no-repeat, #180138;
+  /* title.png = page bg with title art in its top ~28%; min 900px wide so phones crop sides, not shrink art. #230437 = art's bottom edge */
+  background: url(../../public/title.png) top center / max(100%, 900px) auto no-repeat, #230437;
 }
 button, input { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }

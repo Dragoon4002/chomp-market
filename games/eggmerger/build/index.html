@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#140c24">
+<title>EggMerger</title>
+<link rel="icon" href="data:,">
+<script src="vendor/matter.min.js"></script>
+<script src="/chomp-sdk.js"></script>
+<style>
+  html, body { margin: 0; position: fixed; inset: 0; background: radial-gradient(#2a1745, #0c0716); color: #f3ecff; font: 15px system-ui, sans-serif;
+    overflow: hidden; overscroll-behavior: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; touch-action: none; }
+  #app { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; }
+  #hud { height: 52px; display: flex; align-items: center; gap: 6px; padding: 0 6px; box-sizing: border-box; }
+  .stat { flex: 1; min-width: 0; background: linear-gradient(#2c1b4ccc, #180e2ccc); border: 1px solid #8a63d255; border-radius: 12px; padding: 4px 8px; line-height: 1.15; }
+  .stat small { display: block; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; opacity: .65; }
+  .stat b { font-size: 17px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .stat.pot b { color: #ffd66b; text-shadow: 0 0 10px #ffb30066; }
+  .stat.pot.tick b { animation: tick .5s; }
+  @keyframes tick { 30% { color: #fff; transform: scale(1.12); } }
+  #stage { position: relative; border-radius: 14px; overflow: hidden; box-shadow: 0 0 0 2px #8a63d244, 0 12px 40px #000a; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+  .panel { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center;
+    background: radial-gradient(#1b0f30d0, #0b0614f0); padding: 24px; box-sizing: border-box; }
+  .panel[hidden] { display: none; }
+  .panel img.logo { width: 78%; max-width: 300px; filter: drop-shadow(0 6px 18px #a26bff88); }
+  .panel h1 { margin: 0; font-size: 40px; letter-spacing: .02em; background: linear-gradient(#ffe9a8, #ffb347); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .panel p { margin: 0; max-width: 300px; line-height: 1.4; opacity: .9; }
+  .panel .meta { font-size: 13px; opacity: .7; }
+  button { font: 800 18px system-ui, sans-serif; color: #2a1200; background: linear-gradient(#ffe27a, #ff9f2e); border: 0; border-radius: 999px; padding: 14px 38px;
+    box-shadow: 0 4px 0 #a5520d, 0 8px 24px #ff9f2e55; cursor: pointer; }
+  button:active { transform: translateY(3px); box-shadow: 0 1px 0 #a5520d; }
+  button:disabled { filter: grayscale(1) brightness(.7); cursor: wait; }
+  .big { font-size: 46px; font-weight: 900; font-variant-numeric: tabular-nums; }
+  #elder { position: absolute; inset: 0; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  #elder[hidden] { display: none; }
+  #elder .burst { position: absolute; width: 150%; aspect-ratio: 1; background: radial-gradient(#fff6, #ffcf4a33 40%, transparent 70%) center / contain no-repeat; animation: spin 2.6s linear; }
+  #elder .burst.img { background: url(art/burst.webp) center / contain no-repeat; }
+  #elder img { position: relative; width: 70%; filter: drop-shadow(0 0 30px #ffcf4a) drop-shadow(0 0 60px #ff8a00aa); animation: rise 2.6s cubic-bezier(.2, 1.6, .4, 1); }
+  #elder .ttl { position: relative; font: 900 30px system-ui, sans-serif; color: #fff; text-shadow: 0 3px 0 #7a2a00, 0 0 20px #ffb300; animation: pop 2.6s; }
+  #elder .sol { position: relative; font: 900 38px system-ui, sans-serif; color: #ffe27a; text-shadow: 0 3px 0 #7a4a00, 0 0 24px #ffcf4a; animation: pop 2.6s .15s both; }
+  @keyframes spin { to { transform: rotate(160deg); opacity: 0; } }
+  @keyframes rise { 0% { transform: scale(.2) translateY(60%); opacity: 0; } 20% { opacity: 1; } 80% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.15) translateY(-30%); opacity: 0; } }
+  @keyframes pop { 0% { transform: scale(0); } 15% { transform: scale(1.25); } 25%, 80% { transform: scale(1); opacity: 1; } 100% { opacity: 0; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <div class="stat"><small>Score</small><b id="score">0</b></div>
+    <div class="stat"><small>Elders</small><b id="elders">0</b></div>
+    <div class="stat pot" id="potBox"><small>Brood Pot</small><b id="pot">0.0500</b></div>
+    <div class="stat"><small>Entry</small><b>0.001</b></div>
+  </div>
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="elder" hidden><div class="burst"></div><img alt=""><div class="ttl">ELDER HATCHED!</div><div class="sol" id="won"></div></div>
+    <div class="panel" id="start">
+      <img class="logo" src="art/logo.svg" alt="EggMerger" onerror="this.replaceWith(Object.assign(document.createElement('h1'), { textContent: 'EggMerger' }))">
+      <p>Feed the cursed nest. Hatch an Elder. It pays from the Brood Pot.</p>
+      <p class="meta">Two of a kind merge. Two bramdra fuse into an Elder: +15% of the pot.<br>Keep the nest below the lid.</p>
+      <button id="play" disabled>Loading…</button>
+      <p class="meta" id="modeLine">Entry 0.001 SOL · 80% to the pot</p>
+    </div>
+    <div class="panel" id="over" hidden>
+      <h1 id="overTitle">Nest overflowed</h1>
+      <div class="big" id="finalScore">0</div>
+      <p id="finalLine"></p>
+      <button id="again">Play again</button>
+      <p class="meta" id="verify"></p>
+    </div>
+  </div>
+</div>
+<script type="module">
+import { create, drop, step, canDrop, W, H, HZ } from './sim.js';
+import { loadArt, render, onEvents, art } from './render.js';
+
+const $ = (id) => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d'), app = $('app'), stage = $('stage');
+const chomp = (f, ...a) => { try { window.Chomp?.[f](...a); } catch (e) { console.warn(e); } };
+
+// ---- layout: 400x600 logical nest, scaled to fit, DPR-aware ----
+let scale = 1;
+function fit() {
+  scale = Math.min(innerWidth / W, (innerHeight - 52 - 8) / H);
+  const w = Math.floor(W * scale), h = Math.floor(H * scale), dpr = Math.min(3, devicePixelRatio || 1);
+  app.style.width = stage.style.width = w + 'px';
+  stage.style.height = h + 'px';
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  ctx.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
+}
+addEventListener('resize', fit);
+fit();
+
+// ---- session: portal sends it after ready(); standalone falls back to a random free-mode seed ----
+// seed string → u32: digits pass through, else FNV-1a (same as referee/replay.mjs)
+const hash = (str) => { let h = 2166136261; for (const c of String(str)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; };
+const seedU = (x) => (/^\d+$/.test(String(x)) ? Number(x) >>> 0 : hash(x));
+let session = null;
+// TODO(solana): VRF: the run seed for the piece queue comes from a VRF callback on the run PDA, not the portal session.
+window.Chomp?.onSession((s) => { if (!session) { session = { mode: 'free', ...s }; boot(); } });
+
+// ---- pot (mock 0.05 SOL in free mode) ----
+let pot = 0.05;
+const sol = (v) => v.toFixed(4);
+const showPot = () => { $('pot').textContent = sol(pot); $('potBox').classList.remove('tick'); void $('potBox').offsetWidth; $('potBox').classList.add('tick'); };
+
+// ---- run ----
+let s = null, tape = [], runSeed = '', runs = 0, started = false, won = 0, aim = { x: W / 2 };
+function newRun() {
+  // TODO(solana): escrow: enter_run pays 0.001 SOL → 80% Brood Pot PDA / 10% monster vault (treasury until vault PDAs exist) / 10% fee; free mode skips it.
+  // TODO(solana): ER: delegate the run PDA to the ephemeral rollup, create a session key for gasless drop txs.
+  runSeed = runs++ ? `${session.seed}#${runs - 1}` : String(session.seed); // ponytail: replays derive the next seed; per-run VRF seed replaces this
+  s = create(seedU(runSeed));
+  tape = []; started = false; won = 0;
+  $('start').hidden = $('over').hidden = true;
+  hud();
+}
+const hud = () => { $('score').textContent = s.score; $('elders').textContent = s.elders; };
+
+function tryDrop(x) {
+  if (!s || s.over) return;
+  const d = drop(s, x);
+  if (!d) return;
+  if (!started) { started = true; chomp('start'); }
+  tape.push(d);
+  // TODO(solana): ER: send drop(tick, x) signed by the session key, appended to the run PDA (replaces frames).
+  chomp('frames', [d]);
+}
+
+async function finish() {
+  hud();
+  const bytes = new TextEncoder().encode(JSON.stringify(tape));
+  const tapeHash = crypto.subtle ? [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map((b) => b.toString(16).padStart(2, '0')).join('') : '';
+  // TODO(solana): ER: commit + undelegate the run PDA; referee replays the tape (referee/replay.mjs) and calls settle_run, paying elders × 15% of the pot.
+  chomp('result', { score: s.score, elders: s.elders, tapeHash });
+  $('overTitle').textContent = s.reason === 'cap' ? 'Time up' : 'Nest overflowed';
+  $('finalScore').textContent = s.score;
+  $('finalLine').textContent = s.elders ? `${s.elders} Elder${s.elders > 1 ? 's' : ''} hatched · +${sol(won)} SOL${session.mode === 'free' ? ' (free play)' : ''}` : 'No Elder this time. Two bramdra make one.';
+  $('verify').textContent = `${tape.length} drops · seed ${runSeed} · tape ${tapeHash.slice(0, 10)}`;
+  setTimeout(() => ($('over').hidden = false), 700);
+}
+
+function elderPop() {
+  const pay = pot * 0.15; // 15% of the current pot, recomputed per pop
+  pot -= pay; won += pay; showPot();
+  $('won').textContent = `+${sol(pay)} SOL`;
+  const el = $('elder');
+  el.hidden = true; void el.offsetWidth; el.hidden = false; // restart animations
+  clearTimeout(elderPop.t); elderPop.t = setTimeout(() => (el.hidden = true), 2600);
+}
+
+// ---- input: move/drag to aim, click/tap (release) to drop ----
+const toX = (e) => (e.clientX - cv.getBoundingClientRect().left) / scale;
+cv.addEventListener('pointermove', (e) => (aim.x = toX(e)));
+cv.addEventListener('pointerdown', (e) => { aim.x = toX(e); cv.setPointerCapture(e.pointerId); });
+cv.addEventListener('pointerup', (e) => tryDrop((aim.x = toX(e))));
+addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowLeft') aim.x -= 12;
+  if (e.key === 'ArrowRight') aim.x += 12;
+  if (e.key === ' ' || e.key === 'ArrowDown') { e.preventDefault(); tryDrop(aim.x); }
+  aim.x = Math.min(W, Math.max(0, aim.x));
+});
+
+// ---- loop: fixed 60 Hz sim steps, render every frame ----
+let last = 0, acc = 0;
+function frame(now) {
+  acc = Math.min(acc + (last ? now - last : 0), 100); // max 6 steps per frame after a stall
+  last = now;
+  while (s && !s.over && acc >= 1000 / HZ) {
+    acc -= 1000 / HZ;
+    step(s);
+    if (s.events.length) {
+      onEvents(s.events, now);
+      for (const e of s.events) { if (e.type === 'elder') elderPop(); if (e.type === 'over') finish(); }
+      hud();
+    }
+  }
+  if (!s || s.over) acc = 0;
+  render(ctx, s, s && { x: aim.x, cur: s.cur, ready: canDrop(s) }, now);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ---- boot: art + session → ready ----
+const artReady = loadArt().then(() => {
+  if (art.elder) document.querySelector('#elder img').src = 'art/elder.webp';
+  if (art.burst) document.querySelector('#elder .burst').classList.add('img');
+  chomp('ready');
+  setTimeout(() => { if (!session) { session = { mode: 'free', seed: String((Math.random() * 2 ** 32) >>> 0) }; boot(); } }, 300);
+});
+let booted = false;
+async function boot() {
+  if (booted) return;
+  booted = true;
+  await artReady;
+  if (session.mode === 'free') $('modeLine').textContent = 'Free play · mock pot 0.05 SOL · real runs cost 0.001 SOL';
+  $('play').disabled = false;
+  $('play').textContent = session.mode === 'free' ? 'Play free' : 'Play · 0.001 SOL';
+}
+$('play').onclick = newRun;
+$('again').onclick = newRun;
+</script>
+</body>
+</html>

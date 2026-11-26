@@ -1,8 +1,38 @@
 # Chomp Market
 
-Solana (devnet) game portal + marketplace. Plug-and-play games run in a sandboxed iframe, talk to the portal through a postMessage bridge, and use the user's wallet for stakes, scores and in-game programs. Market (skills, monsters, collections, launchpad, spin) runs in the same app.
+A Solana game portal where you stake devnet SOL on skill matches, win VRF-sealed loot, and raise on-chain pets, all in one wallet.
+
+Built for Solana Blitz v10 (MagicBlock, theme "Entertainment Finance"):
+
+- **Compete**: 1v1 staked matches (brawler, keyfall, ribbon, coinflip) escrowed by the `chomp` program and settled by a Rust referee; per-game `submit_score` leaderboards.
+- **Own**: `pet-den` pets are on-chain accounts you create, care for, evolve and release; `sealed-house` loot is yours after you win a lot.
+- **Trade**: `sealed-house` blind-bid auctions for vaults, with `sell_back` at 90%. The market UI (listings, collections, launchpad) is mock data for now.
+- **Win**: winner takes the pot in staked matches (2.5% fee); sealed-house vault contents rolled by MagicBlock VRF.
+
+- Live: <TBD>
+- Demo video: <TBD>
+- Deck: <TBD>
 
 All on-chain parts are **devnet only**. Market pages use mock data with `?demo` (the marketplace program is not built yet, see Limitations).
+
+## Try it
+
+**No wallet** (open `/play/<slug>` signed out; the portal runs games in free mode, nothing on chain):
+
+- `brawler`: "Practice vs bot" on the title screen.
+- `keyfall`: "Practice" button.
+- `monster-siege`: "VS AI" mode.
+- `sealed-house`: mock chain, bots bid against you, session seed stands in for VRF.
+- `pet-den`: in-memory copy of the program (same sim).
+- `tomb-delve`, `eggmerger`: solo runs (eggmerger shows a mock 0.05 SOL pot).
+
+**Devnet wallet**:
+
+1. Connect. A burner keypair is created in the browser (`chomp:burner` in localStorage).
+2. Fund it with the in-app faucet (0.2 SOL, rate limited).
+3. Open or join a staked match in brawler / keyfall / ribbon / coinflip. No opponent within ~20 s in ribbon: the stake is cancelled/refunded and you race the bot unstaked (bots never touch money).
+4. Win: the referee calls `settle`, the pot goes to the winner's wallet.
+5. `sealed-house`: open a lot (VRF request), bid, settle, keep or `sell_back`. `pet-den`: create and care for a pet on chain.
 
 ## Games
 
@@ -14,7 +44,7 @@ All on-chain parts are **devnet only**. Market pages use mock data with `?demo` 
 | `coinflip` | commit-reveal heads/tails | stake via `chomp` | staked e2e on devnet |
 | `monster-siege` | 1v1 card/tower duel (html5) | score only (`submit_score`) | playable; referee key registered, staking not tested |
 | `tomb-delve` | card dungeon extraction (Next export) | score only | playable |
-| `2048` | puzzle (MIT upstream) | score only | playable |
+| `eggmerger` | drop-and-merge physics puzzle, deterministic sim + Node replay referee | none yet: pot program (`enter_run`/`settle_run`), VRF seed and ER drops are TODO; not in `scripts/devnet-init.ts` registration list | free play only, mock pot; uncommitted (replaces `2048`) |
 | `pet-den` | tamagotchi-style pets | own program `pet_den` (create, care, evolve, release) | playable on base layer |
 | `sealed-house` | blind-bid vault auction | own program `sealed_house` (lot, bid, settle, sell_back) + MagicBlock VRF | playable on devnet |
 
@@ -25,8 +55,11 @@ Each game lives in `games/<slug>/` with `game.json` (portal manifest) and `INTAK
 - **`chomp` program** (`programs/chomp/`, Anchor): match escrow (`open_match`, `join_match`, `settle`, `cancel`) with a 2.5% fee, plus per-game `submit_score` leaderboard. A per-game referee key settles matches; anyone can `cancel`/refund after 2 h. Spec: `tasks/devnet-spec.md`.
 - **`pet_den`, `sealed_house`**: standalone Anchor programs in `games/<slug>/program/`.
 - **MagicBlock VRF: used for real** in `sealed-house` (vault contents rolled by the VRF callback on devnet).
-- **MagicBlock Ephemeral Rollups: not used yet.** `pet-den` runs on the base layer. The Private ER path (delegation, gasless care, commit back on evolve) is kept in the program and `NEXT_PUBLIC_ER_RPC` is plumbed through the bridge (`er: true`), but it is not wired in the shipped flow.
-- Marketplace spin via VRF and item trading are not implemented on chain.
+  - Program: `games/sealed-house/program/src/lib.rs` (`ephemeral-rollups-sdk` 0.18 with `vrf` feature; `create_lot` requests randomness via `#[vrf]`, `fill_lot` is the `#[vrf_callback]` signed by the scoped VRF identity).
+  - Client: `games/sealed-house/build/chain.js` sends `create_lot` to the devnet VRF queue and polls until the callback fills the lot.
+- **MagicBlock Ephemeral Rollups: not used yet.** `pet-den` runs on the base layer. The Private ER path (delegation, gasless care, commit back on evolve) is kept in the program (`games/pet-den/program/src/lib.rs`: `#[ephemeral]`, `create_permission`, `delegate_pet`, `evolve_commit`) and `NEXT_PUBLIC_ER_RPC` is plumbed through the bridge (`er: true`), but it is not wired in the shipped flow.
+- **Session keys: not used.** Only TODOs (`games/pet-den/program/src/lib.rs`, `games/tomb-delve/src/lib/chain.ts`).
+- Marketplace spin via VRF and item trading are not implemented on chain (spin page is mock). Staked-match seeds come from the portal, not VRF.
 
 ### Devnet programs
 
@@ -35,6 +68,21 @@ Each game lives in `games/<slug>/` with `game.json` (portal manifest) and `INTAK
 | chomp | `4m5U9NJaLNyDzZj926jE9Y9nvKYJf82MQEcabbbGqcNf` | [view](https://explorer.solana.com/address/4m5U9NJaLNyDzZj926jE9Y9nvKYJf82MQEcabbbGqcNf?cluster=devnet) |
 | pet-den | `2shkiB14DfoCSKawmYMv3qsGTBCxuN4onKQuztYyG2ue` | [view](https://explorer.solana.com/address/2shkiB14DfoCSKawmYMv3qsGTBCxuN4onKQuztYyG2ue?cluster=devnet) |
 | sealed-house | `FGYiydgg6XWauRUq9eyMwHFuwJjG5TM2ndLNQVEJjfR4` | [view](https://explorer.solana.com/address/FGYiydgg6XWauRUq9eyMwHFuwJjG5TM2ndLNQVEJjfR4?cluster=devnet) |
+
+## Built during Blitz vs ported
+
+Blitz window: 2026-11-20 to 2026-11-27. All commits on this repo are dated 2026-11-23 or later.
+
+**Ported** (commit `9857517`, 2026-11-23, "import brawler arena (NEAR snapshot)"): an earlier NEAR project, Brawler Arena. It brought the game clients/sims/servers for `brawler`, `keyfall`, `ribbon`, `coinflip`, a market shell, `agents/` and `infra/`. NEAR contracts, wallet and settlement were stripped in `bac167a`, `811aa2a`, `9d46b1b` (2026-11-23).
+
+**Built during Blitz** (2026-11-23 to 2026-11-25, plus uncommitted work):
+
+- `chomp` Anchor program (escrow + scores), burner wallet + faucet, portal iframe bridge, `crates/chain` referee settle (`c0e76c2`).
+- Solana staking wired into the 4 ported games (`0fd97ef`, `11a938b`, `67ea8d4`, `73c3fde`).
+- Plug-and-play portal and market v2 UI (`fa73b26`, `d40f286`, `b17f36b`).
+- New games: `monster-siege` (`9de2f70`), `tomb-delve` (`9dd1309`), `pet-den` + `pet_den` program (`5ea4ee8`, `5519bca`, `47fcbf1`), `sealed-house` + `sealed_house` program with VRF (`259855d`, `ddac586`).
+- `eggmerger` (not yet committed; replaces `2048`, which was added and then removed during Blitz).
+- Render deploy for game servers (`5ca3485`).
 
 ## Wallet
 
@@ -135,7 +183,7 @@ cd market && bunx tsc --noEmit -p . && bun run build
 ## Deploy
 
 - **Market**: Vercel (Next, `output: standalone`). Set the env vars above and `FAUCET_SECRET`.
-- **Game servers are not served by Vercel.** Host the Rust servers separately (one instance each, rooms are in-memory) and point the market at them with `<SLUG>_SERVER`, e.g. `BRAWLER_SERVER=https://brawler.example.com`. Game static builds must ship with the market (`games/*/build`) or from `NEXT_PUBLIC_GAMES_ORIGIN`.
+- **Game servers are not served by Vercel.** `render.yaml` is a Render Blueprint for brawler, keyfall, ribbon, coinflip, monster-siege (`infra/game-server.Dockerfile`, set `REFEREE_SECRET` in the dashboard; unset = free rooms only). Or host the Rust servers separately (one instance each, rooms are in-memory) and point the market at them with `<SLUG>_SERVER`, e.g. `BRAWLER_SERVER=https://brawler.example.com`. Game static builds must ship with the market (`games/*/build`) or from `NEXT_PUBLIC_GAMES_ORIGIN`.
 - Legacy EC2/Caddy flow: `infra/README.md`.
 
 ## Known limitations
@@ -146,7 +194,8 @@ cd market && bunx tsc --noEmit -p . && bun run build
 - `sealed-house`: lot contents are readable on chain, so `sell_back` can be drained (decision pending). Bids use commit-reveal, not PER.
 - `submit_score` is not verified on chain (client-reported); no fee withdraw instruction; deployer can swap a game's referee; finished match ids are in-memory only.
 - Privy hidden (untested). Coinflip art still shows old NEAR glyphs. Portal doesn't forward `?room=` to the iframe; 390px iframe is small.
-- Free play only for monster-siege, tomb-delve, 2048; no staking path.
+- Free play only for monster-siege, tomb-delve, eggmerger; no staking path. eggmerger pot is mock and it is not registered on chain yet.
+- `scripts/devnet-init.ts` (run by `devnet-setup.sh`) still registers `2048` (removed) and not `eggmerger`.
 
 ## License
 

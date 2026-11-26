@@ -15,7 +15,8 @@ const games = fs.readdirSync(gamesDir)
     const g = JSON.parse(fs.readFileSync(path.join(gamesDir, slug, "game.json"), "utf8"));
     const url = process.env[`NEXT_PUBLIC_${slug.toUpperCase().replace(/-/g, "_")}_URL`];
     return { ...g, slug, ...(g.url && url ? { url } : {}) };
-  });
+  })
+  .filter((g) => !g.hidden); // "hidden": true in game.json = off the portal
 
 // game server default ports (keep in sync with scripts/serve-games.ts)
 const SERVERS: Record<string, number> = { brawler: 8787, ribbon: 8788, keyfall: 8789, "monster-siege": 8790, coinflip: 8791 };

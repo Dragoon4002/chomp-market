@@ -21,10 +21,11 @@ Debug: `?selftest` runs bot vs bot at 12x; `r` toggles defender ranges. Seat 1 s
 |---|---|
 | `{t:'host', name, loadout:{deck}}` | new room, seat 0 → `{t:'room', code, seat, token}` |
 | `{t:'join', code, name, loadout}` | seat 1; 3 s count, then `start` to both |
-| `{t:'rejoin', code, token}` | retake seat within 15 s; gets `start` with the full play log |
-| `{t:'play', card, x2, y}` | card = deck index 0..7, hex (x2 0..40, y 0..10, `build/map.js`) → broadcast `{t:'play', seat, card, x2, y, apply_tick: tick + 6}` |
+| `{t:'rejoin', code, token}` | retake seat within 20 s; gets `start` with the full play log |
+| `{t:'play', card, x2, y}` | card = deck index 0..7, hex (x2 0..40, y 0..10, `build/map.js`) → broadcast `{t:'play', seat, card, x2, y, apply_tick: tick + 1}` |
+| `{t:'ack', tick}` | sim tick reached (~5/s). Seat trailing the clock > 1.5 s (or disconnected) → clock pauses, `pause {on:true, seat, secs:20}` to both; all seats within 0.5 s → `pause {on:false}` |
 | `{t:'over'}` | both sent → room removed |
 
-Server → client: `start {seed, loadouts, names, plays, tick}`, `beat {tick}` every 3 ticks (30 Hz clock), `peer {conn:[a,b]}`, `forfeit {winner}` (seat gone > 15 s), `error {msg}`.
-Clients step the sim only while `t < beat`, applying plays whose `apply_tick == t`; invalid plays (not in hand, no energy, bad hex for the card) are dropped by the sim on both sides.
+Server → client: `start {seed, loadouts, names, plays, tick}`, `beat {tick}` every 3 ticks (30 Hz clock), `peer {conn:[a,b]}`, `forfeit {winner}` (seat stalled > 20 s: lagging or gone; both = `winner: null`, draw), `error {msg}`.
+Clients step the sim at a steady 30 Hz only while `t < beat` (2x when > 200 ms behind, burst when > 2 s), applying plays whose `apply_tick == t`; invalid plays (not in hand, no energy, bad hex for the card) are dropped by the sim on both sides.
 Limits: 8 KiB frames, 20 msgs/s and 4 plays/s per socket. Room removed at match end (both `over`, or 4:05 of ticks).

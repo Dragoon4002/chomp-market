@@ -8,13 +8,13 @@ export function wsUrl() {
   return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
 }
 
-// opts: {code?, loadout, name, on: {room, start, error, peer, forfeit}}
+// opts: {code?, loadout, name, on: {room, start, error, peer, forfeit, pause}}
 export function connectLive(opts) {
   let ws, token = null, downAt = 0, retry = 0, lastMsg = 0;
   const plays = new Map(); // apply_tick -> [{seat, card, x2, y}]
   const live = { seat: null, code: null, beat: 0, started: false, closed: false, down: false }; // down = reconnecting
   const send = (m) => ws.readyState === 1 && ws.send(JSON.stringify(m));
-  // a dropped socket retries with the seat token every 1.5 s for 20 s (> server's 15 s grace; memory only: sandbox has no storage)
+  // a dropped socket retries with the seat token every 1.5 s for 25 s (> server's 20 s grace; memory only: sandbox has no storage)
   function open() {
     clearTimeout(retry);
     const sock = (ws = new WebSocket(wsUrl())), cur = () => sock === ws; // handlers of a replaced socket are ignored
@@ -23,7 +23,7 @@ export function connectLive(opts) {
     sock.onerror = () => cur() && !token && opts.on.error?.(`Can't reach ${wsUrl()}`);
     sock.onclose = () => {
       if (!cur()) return;
-      if (!live.closed && token && Date.now() - (downAt ||= Date.now()) < 20000) { live.down = true; retry = setTimeout(open, 1500); return; }
+      if (!live.closed && token && Date.now() - (downAt ||= Date.now()) < 25000) { live.down = true; retry = setTimeout(open, 1500); return; }
       live.closed = true; live.down = false; opts.on.peer?.({ closed: true });
     };
     sock.onmessage = (e) => { if (cur()) { lastMsg = Date.now(); onMsg(e); } };
@@ -50,6 +50,7 @@ export function connectLive(opts) {
     else if (m.t === 'beat') live.beat = Math.max(live.beat, m.tick);
     else if (m.t === 'peer') opts.on.peer?.(m);
     else if (m.t === 'forfeit') opts.on.forfeit?.(m);
+    else if (m.t === 'pause') opts.on.pause?.(m); // {on, seat, secs}: clock frozen while a seat lags/is gone
     else if (m.t === 'error') {
       if (live.down) { live.closed = true; live.down = false; ws.close(); opts.on.peer?.({ closed: true }); } // rejoin refused: seat is gone
       opts.on.error?.(m.msg);
@@ -62,6 +63,7 @@ export function connectLive(opts) {
   }
   live.inputsAt = (t) => plays.get(t) ?? [];
   live.play = (card, x2, y) => send({ t: 'play', card, x2, y });
+  live.ack = (tick) => send({ t: 'ack', tick }); // sim tick reached; server pauses the clock if this trails > 1.5 s
   live.over = () => send({ t: 'over' });
   live.close = () => { live.closed = true; live.down = false; clearTimeout(retry); document.removeEventListener('visibilitychange', onVis); ws.close(); };
   live.token = () => token;
