@@ -139,9 +139,9 @@
 </dialog>
 <script type="module">
 import { newMatch, step, demoMonster, demoLoadout, archetypeOf, scoreOf, COST, HZ } from './sim.js?v=2';
-import { render, dropAt, loadArt } from './render.js?v=5';
+import { render, dropAt, loadArt } from './render.js?v=6';
 import { makeBot } from './bot.js?v=2';
-import { connectLive } from './net.js?v=4';
+import { connectLive } from './net.js?v=5';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d'), $ = (id) => document.getElementById(id);
 const menu = $('menu'), msg = (t) => document.querySelectorAll('.msg').forEach((m) => (m.textContent = t));
@@ -247,8 +247,8 @@ async function awake(on) {
 document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && g && !g.ended && awake(true));
 
 function begin(seed, loadouts, seat, extra) {
-  g = { s: newMatch(seed, loadouts), seed, tape: [], seat, pending: [], countdown: 3 * HZ, ended: false, acc: 0, ...extra };
-  ui.seat = seat; ui.sel = null; ui.drag = null; ui.peer = '';
+  g = { s: newMatch(seed, loadouts), seed, tape: [], seat, pending: [], countdown: 3 * HZ, ended: false, acc: 0, acked: 0, ...extra };
+  ui.seat = seat; ui.sel = null; ui.drag = null; ui.peer = ''; ui.pause = null; ui.sent = null;
   menu.hidden = true;
   document.querySelectorAll('dialog[open]').forEach((d) => d.close());
   awake(true);
@@ -276,6 +276,7 @@ function startLive(code) {
         if (m.closed) setTimeout(() => g?.live === live && !g.ended && toMenu('Connection lost'), 4000);
       },
       forfeit: (m) => g?.live === live && finish({ winner: m.winner, reason: 'forfeit' }),
+      pause: (m) => { if (g?.live === live) ui.pause = m.on ? { me: m.seat === live.seat, until: Date.now() + m.secs * 1000 } : null; },
     },
   });
 }
@@ -297,18 +298,23 @@ function finish(over) {
   setTimeout(() => toMenu(`Last match: ${draw ? 'draw' : won ? 'win' : 'loss'} (${over.reason})`), 3000);
 }
 
+// Live: steady 30 Hz just behind the server's beat (beats come in 3-tick chunks; stepping them at once = 10 fps jumps).
+// >200 ms behind → 2x until caught up; >2 s behind (rejoin, background tab) → 60 ticks/frame.
+function liveTick(dt) {
+  const ms = 1000 / HZ, ahead = g.live.beat - g.s.t;
+  g.acc += ahead > 60 ? 60 * ms : ahead > 6 ? 2 * dt : dt;
+  while (g.acc >= ms && g.s.t < g.live.beat && !g.s.over) {
+    g.acc -= ms;
+    const ins = g.live.inputsAt(g.s.t);
+    if (ins.length) g.tape.push([g.s.t, ins]);
+    g.s = step(g.s, ins);
+    if (g.s.t % 30 === 0) hist[g.s.t] = JSON.stringify([g.s.P.map((p) => [p.core, p.e, p.hand]), g.s.units.map((u) => [u.x, u.y, u.hp])]);
+  }
+  if (g.s.t >= g.live.beat) g.acc = Math.min(g.acc, ms); // starved: don't bank time and burst later
+  if (g.s.t - g.acked >= 6 || (g.s.t > g.acked && g.s.t >= g.live.beat)) g.live.ack((g.acked = g.s.t)); // ~5/s, plus the tick we stalled on
+}
 function tick() {
   const s = g.s;
-  if (g.live) {
-    let n = 0;
-    while (g.s.t < g.live.beat && !g.s.over && n++ < 60) {
-      const ins = g.live.inputsAt(g.s.t);
-      if (ins.length) g.tape.push([g.s.t, ins]);
-      g.s = step(g.s, ins); // catch up after a stall
-      if (g.s.t % 30 === 0) hist[g.s.t] = JSON.stringify([g.s.P.map((p) => [p.core, p.e, p.hand]), g.s.units.map((u) => [u.x, u.y, u.hp])]);
-    }
-    return;
-  }
   if (g.countdown > 0) { if (--g.countdown === 0) chomp('start'); return; }
   const ins = g.pending.splice(0);
   const b = g.bot(s); if (b) ins.push(b);
@@ -323,11 +329,13 @@ function frame(now) {
   if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
   if (g) {
     if (!g.ended) {
-      if (g.live) tick();
+      if (g.live) liveTick(dt);
       else for (g.acc += g.self ? 400 : dt; g.acc >= 1000 / HZ && !g.s.over; g.acc -= 1000 / HZ) tick();
       if (g.s.over) finish(g.s.over);
     }
-    if (!g.ended) ui.banner = g.countdown > 0 ? String(Math.ceil(g.countdown / HZ)) : g.live?.down ? 'Reconnecting…' : g.live && g.s.t >= g.live.beat ? ui.peer : '';
+    if (!g.ended) ui.banner = g.countdown > 0 ? String(Math.ceil(g.countdown / HZ)) : g.live?.down ? 'Reconnecting…'
+      : ui.pause ? `${ui.pause.me ? 'Your connection is slow' : ui.peer || 'Opponent lagging'} · paused ${Math.max(0, Math.ceil((ui.pause.until - Date.now()) / 1000))}s`
+      : g.live && g.s.t >= g.live.beat ? ui.peer : '';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     L = render(ctx, w, h, g.s, ui);
     const fx = Math.round(L.sx + L.sw / 2 + 1.75 * L.T + 8), fy = Math.round(L.top + 0.3 * L.T), pos = `translate(${fx}px,${fy}px)`; // right of the clock
@@ -350,7 +358,7 @@ function cardAt(x, y) { // hit rect >= 44 px, plus the raised strip of a selecte
 function play(px, py) {
   const me = g.s.P[g.seat], ci = me.hand[ui.sel], { h, kind } = dropAt(L, g.s, ui, px, py);
   if (!kind || me.cards[ci].cost * 60 > me.e) return false; // invalid: card stays in hand
-  if (g.live) g.live.play(ci, ...h); else g.pending.push({ seat: g.seat, card: ci, x2: h[0], y: h[1] });
+  if (g.live) { g.live.play(ci, ...h); ui.sent = { ci, h, kind, at: ui.ms }; } else // sent: ghost on the hex until the server's echo applies it g.pending.push({ seat: g.seat, card: ci, x2: h[0], y: h[1] });
   ui.sel = null;
   return true;
 }
